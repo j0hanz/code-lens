@@ -69,7 +69,6 @@ export function registerRefactorCodeTool(server: McpServer): void {
     errorCode: 'E_REFACTOR_CODE',
     ...buildStructuredToolExecutionOptions(TOOL_CONTRACT),
     requiresFile: true,
-    progressContext: (input) => input.language ?? 'auto-detect',
     formatOutcome: (result) => {
       const total =
         result.namingIssuesCount +

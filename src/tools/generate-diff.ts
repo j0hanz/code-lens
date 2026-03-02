@@ -217,8 +217,7 @@ export function registerGenerateDiffTool(server: McpServer): void {
     },
     wrapToolHandler(
       {
-        toolName: 'generate_diff',
-        progressContext: (input) => input.mode,
+        toolName: 'Generate Diff',
       },
       async (input) => {
         const { mode } = input;

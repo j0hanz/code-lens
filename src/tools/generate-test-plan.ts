@@ -43,8 +43,7 @@ export function registerGenerateTestPlanTool(server: McpServer): void {
     errorCode: 'E_GENERATE_TEST_PLAN',
     ...buildStructuredToolExecutionOptions(TOOL_CONTRACT),
     requiresDiff: true,
-    progressContext: (input) => input.repository,
-    formatOutcome: (result) => `${result.testCases.length} test cases`,
+    formatOutcome: (result) => `${result.testCases.length} cases`,
     formatOutput: (result) => {
       const lines = [
         result.summary,

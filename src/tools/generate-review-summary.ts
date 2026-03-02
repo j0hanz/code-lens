@@ -48,7 +48,6 @@ export function registerGenerateReviewSummaryTool(server: McpServer): void {
     errorCode: 'E_REVIEW_SUMMARY',
     ...buildStructuredToolExecutionOptions(TOOL_CONTRACT),
     requiresDiff: true,
-    progressContext: (input) => input.repository,
     formatOutcome: (result) => `risk: ${result.overallRisk}`,
     transformResult: (_input: GenerateReviewSummaryInput, result, ctx) => {
       const { stats } = getDiffContextSnapshot(ctx);

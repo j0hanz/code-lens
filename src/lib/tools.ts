@@ -522,7 +522,7 @@ export class ToolExecutionRunner<
     this.responseSchema = getCachedGeminiResponseSchema(config);
     // Initialize reporter with placeholder context; updated in run()
     this.reporter = new RunReporter(
-      config.name,
+      config.title,
       dependencies.reportProgress,
       dependencies.statusReporter,
       DEFAULT_PROGRESS_CONTEXT
@@ -549,11 +549,11 @@ export class ToolExecutionRunner<
     if (record.event === 'gemini_retry') {
       const details = asObjectRecord(record.details);
       const { attempt } = details;
-      const msg = `Network error. Retrying (attempt ${String(attempt)})...`;
+      const msg = `retrying (attempt ${String(attempt)})`;
 
       await this.reporter.reportStep(STEP_CALLING_MODEL, msg);
     } else if (record.event === 'gemini_queue_acquired') {
-      const msg = 'Model queue acquired, generating response...';
+      const msg = 'waiting for model';
       await this.reporter.reportStep(STEP_CALLING_MODEL, msg);
     }
   }
@@ -581,7 +581,7 @@ export class ToolExecutionRunner<
     if (validationError) {
       const validationMessage = extractValidationMessage(validationError);
       await this.reporter.updateStatus(validationMessage);
-      await this.reporter.reportCompletion('rejected');
+      await this.reporter.reportCompletion('validation failed');
       await this.reporter.storeResultSafely(
         'failed',
         validationError,
@@ -614,7 +614,7 @@ export class ToolExecutionRunner<
     if (attempt === 0) {
       await this.reporter.reportStep(
         STEP_VALIDATING_RESPONSE,
-        'Verifying output structure...'
+        'parsing response'
       );
     }
 
@@ -752,7 +752,7 @@ export class ToolExecutionRunner<
 
   async run(input: unknown): Promise<CallToolResult> {
     try {
-      await this.reporter.reportStep(STEP_STARTING, 'Initializing...');
+      await this.reporter.reportStep(STEP_STARTING, 'starting');
 
       const inputRecord = parseToolInput<TInput>(
         input,
@@ -768,10 +768,7 @@ export class ToolExecutionRunner<
       this.executionCtx = ctx;
 
       this.throwIfAborted();
-      await this.reporter.reportStep(
-        STEP_VALIDATING,
-        'Validating request parameters...'
-      );
+      await this.reporter.reportStep(STEP_VALIDATING, 'validating input');
 
       const validationError = await this.executeValidation(inputRecord, ctx);
       if (validationError) {
@@ -779,19 +776,13 @@ export class ToolExecutionRunner<
       }
 
       this.throwIfAborted();
-      await this.reporter.reportStep(
-        STEP_BUILDING_PROMPT,
-        'Constructing analysis context...'
-      );
+      await this.reporter.reportStep(STEP_BUILDING_PROMPT, 'preparing prompt');
 
       const promptParts = this.config.buildPrompt(inputRecord, ctx);
       const { prompt, systemInstruction } = promptParts;
 
       this.throwIfAborted();
-      await this.reporter.reportStep(
-        STEP_CALLING_MODEL,
-        'Querying Gemini model...'
-      );
+      await this.reporter.reportStep(STEP_CALLING_MODEL, 'analyzing');
 
       let parsed: TResult;
       if (this.config.customGenerate) {
@@ -804,7 +795,7 @@ export class ToolExecutionRunner<
       }
 
       this.throwIfAborted();
-      await this.reporter.reportStep(STEP_FINALIZING, 'Processing results...');
+      await this.reporter.reportStep(STEP_FINALIZING, 'finalizing');
 
       const finalResult = this.applyResultTransform(inputRecord, parsed, ctx);
       const textContent = this.formatResultText(finalResult, ctx);

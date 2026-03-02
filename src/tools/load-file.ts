@@ -74,7 +74,7 @@ export function registerLoadFileTool(server: McpServer): void {
     },
     wrapToolHandler(
       {
-        toolName: 'load_file',
+        toolName: 'Load File',
         progressContext: (input) => path.basename(input.filePath),
       },
       async (input) => {

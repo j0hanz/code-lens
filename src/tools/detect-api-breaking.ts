@@ -42,9 +42,8 @@ export function registerDetectApiBreakingTool(server: McpServer): void {
     errorCode: 'E_DETECT_API_BREAKING',
     ...buildStructuredToolExecutionOptions(TOOL_CONTRACT),
     requiresDiff: true,
-    progressContext: (input) => input.language ?? 'auto-detect',
     formatOutcome: (result) =>
-      `${result.breakingChanges.length} breaking change(s) found`,
+      `${result.breakingChanges.length} breaking changes`,
     formatOutput: (result) => {
       if (!result.hasBreakingChanges) {
         return 'No breaking changes detected.';

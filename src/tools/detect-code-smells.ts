@@ -60,9 +60,14 @@ export function registerDetectCodeSmellsTool(server: McpServer): void {
     errorCode: 'E_DETECT_CODE_SMELLS',
     ...buildStructuredToolExecutionOptions(TOOL_CONTRACT),
     requiresFile: true,
-    progressContext: (input) => input.language ?? 'auto-detect',
     formatOutcome: (result) => {
-      return `${result.overallHealth} (${result.errorCount}E/${result.warningCount}W/${result.infoCount}I)`;
+      const parts: string[] = [];
+      if (result.errorCount > 0) parts.push(`${result.errorCount} error`);
+      if (result.warningCount > 0) parts.push(`${result.warningCount} warning`);
+      if (result.infoCount > 0) parts.push(`${result.infoCount} info`);
+      return parts.length > 0
+        ? `${result.overallHealth} — ${parts.join(', ')}`
+        : result.overallHealth;
     },
     formatOutput: (result) => {
       const lines = [result.summary];

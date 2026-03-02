@@ -156,12 +156,20 @@ export function formatProgressCompletion(
   return formatProgressMessage(toolName, context, outcome);
 }
 
+function capitalize(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
 function formatProgressMessage(
   toolName: string,
   context: string,
   metadata: string
 ): string {
-  return `${toolName}: ${context} [${metadata}]`;
+  const label = capitalize(metadata);
+  if (context === DEFAULT_PROGRESS_CONTEXT) {
+    return `${toolName} [${label}]`;
+  }
+  return `${toolName}: ${context} [${label}]`;
 }
 
 export function createFailureStatusMessage(
@@ -253,7 +261,7 @@ export async function reportSchemaRetryProgressBestEffort(
       toolName,
       context,
       STEP_VALIDATING_RESPONSE + retryCount / (maxRetries + 1),
-      `Schema repair in progress (attempt ${retryCount}/${maxRetries})...`
+      `retrying response (${retryCount}/${maxRetries})`
     );
   } catch {
     // Progress updates are best-effort and must not interrupt retries.

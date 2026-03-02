@@ -77,7 +77,7 @@ export function registerVerifyLogicTool(server: McpServer): void {
     },
     progressContext: (input) => input.question.slice(0, 60),
     formatOutcome: (result) =>
-      `verified: ${String(result.verified)} | ${result.codeBlocks.length} block(s)`,
+      `${result.verified ? 'verified' : 'unverified'}, ${result.codeBlocks.length} code samples`,
     formatOutput: (result) => {
       const status = result.verified ? 'Verified' : 'Failed';
       const lines = [`**Status:** ${status}`, '', result.answer];

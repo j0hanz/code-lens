@@ -60,10 +60,8 @@ export function registerGenerateDocumentationTool(server: McpServer): void {
     errorCode: 'E_GENERATE_DOCUMENTATION',
     ...buildStructuredToolExecutionOptions(TOOL_CONTRACT),
     requiresFile: true,
-    progressContext: (input) => input.language ?? 'auto-detect',
-    formatOutcome: (result) => {
-      return `${result.documentedCount}/${result.totalExports} exports documented`;
-    },
+    formatOutcome: (result) =>
+      `${result.documentedCount} of ${result.totalExports} exports documented`,
     formatOutput: (result) => {
       const lines = [result.summary];
 

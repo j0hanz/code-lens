@@ -45,7 +45,6 @@ export function registerAnalyzePrImpactTool(server: McpServer): void {
     errorCode: 'E_ANALYZE_IMPACT',
     ...buildStructuredToolExecutionOptions(TOOL_CONTRACT),
     requiresDiff: true,
-    progressContext: (input) => input.repository,
     formatOutcome: (result) => `severity: ${result.severity}`,
     formatOutput: (result) => {
       const lines = [

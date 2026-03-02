@@ -43,11 +43,8 @@ export function registerAnalyzeComplexityTool(server: McpServer): void {
     errorCode: 'E_ANALYZE_COMPLEXITY',
     ...buildStructuredToolExecutionOptions(TOOL_CONTRACT),
     requiresDiff: true,
-    progressContext: (input) => input.language ?? 'auto-detect',
     formatOutcome: (result) =>
-      result.isDegradation
-        ? 'Performance degradation detected'
-        : 'No degradation',
+      result.isDegradation ? 'degradation detected' : 'no degradation',
     formatOutput: (result) => {
       const lines = [
         `**Time Complexity:** ${result.timeComplexity}`,
