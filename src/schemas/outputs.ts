@@ -361,6 +361,129 @@ export type VerifyLogicGeminiResult = z.infer<
 export type VerifyLogicResult = z.infer<typeof VerifyLogicResultSchema>;
 
 // ---------------------------------------------------------------------------
+// generate_documentation
+// ---------------------------------------------------------------------------
+
+const DOC_BLOCK_KINDS = [
+  'function',
+  'class',
+  'method',
+  'interface',
+  'type',
+  'constant',
+  'variable',
+  'enum',
+] as const;
+
+export const DocBlockSchema = z.strictObject({
+  target: createBoundedString(1, 300, 'Exported symbol name.'),
+  kind: z.enum(DOC_BLOCK_KINDS).describe('Symbol kind.'),
+  signature: createBoundedString(1, 500, 'Declaration signature.'),
+  documentation: createBoundedString(1, 2000, 'Generated documentation stub.'),
+  example: z
+    .string()
+    .min(1)
+    .max(1000)
+    .optional()
+    .describe('Optional usage example.'),
+});
+
+export const GenerateDocumentationGeminiResultSchema = z.strictObject({
+  summary: z
+    .string()
+    .min(1)
+    .max(2000)
+    .describe('Documentation analysis summary.'),
+  docBlocks: z
+    .array(DocBlockSchema)
+    .min(0)
+    .max(50)
+    .describe('Generated documentation blocks.'),
+  totalExports: z.int().min(0).describe('Total public exports found.'),
+});
+
+export const GenerateDocumentationResultSchema =
+  GenerateDocumentationGeminiResultSchema.extend({
+    filePath: z.string().describe('Analyzed file path.'),
+    language: z.string().describe('Detected/provided language.'),
+    documentedCount: z.int().min(0).describe('Doc blocks generated.'),
+  });
+
+export type DocBlock = z.infer<typeof DocBlockSchema>;
+export type GenerateDocumentationGeminiResult = z.infer<
+  typeof GenerateDocumentationGeminiResultSchema
+>;
+export type GenerateDocumentationResult = z.infer<
+  typeof GenerateDocumentationResultSchema
+>;
+
+// ---------------------------------------------------------------------------
+// detect_code_smells
+// ---------------------------------------------------------------------------
+
+const CODE_SMELL_TYPES = [
+  'dead_code',
+  'magic_number',
+  'long_function',
+  'deep_nesting',
+  'god_class',
+  'feature_envy',
+  'primitive_obsession',
+  'shotgun_surgery',
+  'data_clump',
+  'long_parameter_list',
+] as const;
+
+const SMELL_SEVERITIES = ['info', 'warning', 'error'] as const;
+
+const OVERALL_HEALTH_LEVELS = [
+  'healthy',
+  'needs_attention',
+  'unhealthy',
+] as const;
+
+export const CodeSmellSchema = z.strictObject({
+  type: z.enum(CODE_SMELL_TYPES).describe('Smell category.'),
+  target: createBoundedString(1, 300, 'Function/class/block name or location.'),
+  severity: z.enum(SMELL_SEVERITIES).describe('Finding severity.'),
+  explanation: createBoundedString(
+    1,
+    500,
+    'What the smell is and why it matters.'
+  ),
+  suggestion: createBoundedString(1, 1000, 'How to fix it.'),
+});
+
+export const DetectCodeSmellsGeminiResultSchema = z.strictObject({
+  summary: z.string().min(1).max(2000).describe('Code smell analysis summary.'),
+  smells: z
+    .array(CodeSmellSchema)
+    .min(0)
+    .max(50)
+    .describe('Detected code smells.'),
+  overallHealth: z
+    .enum(OVERALL_HEALTH_LEVELS)
+    .describe('Overall file health assessment.'),
+});
+
+export const DetectCodeSmellsResultSchema =
+  DetectCodeSmellsGeminiResultSchema.extend({
+    filePath: z.string().describe('Analyzed file path.'),
+    language: z.string().describe('Detected/provided language.'),
+    infoCount: z.int().min(0).describe('Info-level smells.'),
+    warningCount: z.int().min(0).describe('Warning-level smells.'),
+    errorCount: z.int().min(0).describe('Error-level smells.'),
+  });
+
+export type CodeSmell = z.infer<typeof CodeSmellSchema>;
+export type DetectCodeSmellsGeminiResult = z.infer<
+  typeof DetectCodeSmellsGeminiResultSchema
+>;
+export type DetectCodeSmellsResult = z.infer<
+  typeof DetectCodeSmellsResultSchema
+>;
+
+// ---------------------------------------------------------------------------
 // Repository indexing & query
 // ---------------------------------------------------------------------------
 

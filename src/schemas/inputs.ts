@@ -90,6 +90,14 @@ export const RefactorCodeInputSchema = z.strictObject({
   language: LanguageSchema,
 });
 
+export const GenerateDocumentationInputSchema = z.strictObject({
+  language: LanguageSchema,
+});
+
+export const DetectCodeSmellsInputSchema = z.strictObject({
+  language: LanguageSchema,
+});
+
 export const AskInputSchema = z.strictObject({
   question: createBoundedString(1, 2000, 'Question about the loaded file.'),
   language: LanguageSchema,
@@ -127,6 +135,10 @@ export const QueryRepositoryInputSchema = z.strictObject({
 });
 
 export type AnalyzePrImpactInput = z.infer<typeof AnalyzePrImpactInputSchema>;
+export type GenerateDocumentationInput = z.infer<
+  typeof GenerateDocumentationInputSchema
+>;
+export type DetectCodeSmellsInput = z.infer<typeof DetectCodeSmellsInputSchema>;
 export type GenerateReviewSummaryInput = z.infer<
   typeof GenerateReviewSummaryInputSchema
 >;

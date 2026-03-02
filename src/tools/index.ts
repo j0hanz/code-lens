@@ -4,7 +4,9 @@ import { registerAnalyzeComplexityTool } from './analyze-complexity.js';
 import { registerAnalyzePrImpactTool } from './analyze-pr-impact.js';
 import { registerAskTool } from './ask.js';
 import { registerDetectApiBreakingTool } from './detect-api-breaking.js';
+import { registerDetectCodeSmellsTool } from './detect-code-smells.js';
 import { registerGenerateDiffTool } from './generate-diff.js';
+import { registerGenerateDocumentationTool } from './generate-documentation.js';
 import { registerGenerateReviewSummaryTool } from './generate-review-summary.js';
 import { registerGenerateTestPlanTool } from './generate-test-plan.js';
 import { registerIndexRepositoryTool } from './index-repository.js';
@@ -25,6 +27,8 @@ const TOOL_REGISTRARS = [
   registerDetectApiBreakingTool,
   registerLoadFileTool,
   registerRefactorCodeTool,
+  registerGenerateDocumentationTool,
+  registerDetectCodeSmellsTool,
   registerAskTool,
   registerVerifyLogicTool,
   registerWebSearchTool,

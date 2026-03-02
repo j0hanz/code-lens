@@ -7,6 +7,8 @@ import {
   AnalyzeComplexityInputSchema,
   AnalyzePrImpactInputSchema,
   DetectApiBreakingInputSchema,
+  DetectCodeSmellsInputSchema,
+  GenerateDocumentationInputSchema,
   GenerateReviewSummaryInputSchema,
   GenerateTestPlanInputSchema,
   WebSearchInputSchema,
@@ -17,6 +19,10 @@ import {
   AskResultSchema,
   DefaultOutputSchema,
   DetectApiBreakingResultSchema,
+  DetectCodeSmellsGeminiResultSchema,
+  DetectCodeSmellsResultSchema,
+  GenerateDocumentationGeminiResultSchema,
+  GenerateDocumentationResultSchema,
   PrImpactResultSchema,
   RefactorCodeGeminiResultSchema,
   RefactorCodeResultSchema,
@@ -103,6 +109,21 @@ describe('input schemas', () => {
 
       const tooShort = schema.safeParse({ language: 'x' });
       assert.equal(tooShort.success, false);
+    }
+  });
+
+  it('GenerateDocumentationInputSchema and DetectCodeSmellsInputSchema accept optional language', () => {
+    for (const schema of [
+      GenerateDocumentationInputSchema,
+      DetectCodeSmellsInputSchema,
+    ]) {
+      assert.equal(schema.safeParse({}).success, true);
+      assert.equal(schema.safeParse({ language: 'Python' }).success, true);
+      assert.equal(schema.safeParse({ language: 'x' }).success, false);
+      assert.equal(
+        schema.safeParse({ language: 'Go', extra: true }).success,
+        false
+      );
     }
   });
 
@@ -238,6 +259,83 @@ describe('output schemas', () => {
     });
     assert.equal(result.success, true);
   });
+
+  it('GenerateDocumentationGeminiResultSchema accepts valid result', () => {
+    const result = GenerateDocumentationGeminiResultSchema.safeParse({
+      summary: 'File has 3 public exports.',
+      docBlocks: [
+        {
+          target: 'createServer',
+          kind: 'function',
+          signature: 'function createServer(port: number): Server',
+          documentation: 'Creates a new HTTP server on the given port.',
+        },
+      ],
+      totalExports: 3,
+    });
+    assert.equal(result.success, true);
+  });
+
+  it('GenerateDocumentationResultSchema rejects without filePath', () => {
+    const result = GenerateDocumentationResultSchema.safeParse({
+      summary: 'File has 0 exports.',
+      docBlocks: [],
+      totalExports: 0,
+    });
+    assert.equal(result.success, false);
+  });
+
+  it('GenerateDocumentationResultSchema accepts full result', () => {
+    const result = GenerateDocumentationResultSchema.safeParse({
+      summary: 'Fully documented.',
+      docBlocks: [],
+      totalExports: 0,
+      filePath: 'src/index.ts',
+      language: 'TypeScript',
+      documentedCount: 0,
+    });
+    assert.equal(result.success, true);
+  });
+
+  it('DetectCodeSmellsGeminiResultSchema accepts valid result', () => {
+    const result = DetectCodeSmellsGeminiResultSchema.safeParse({
+      summary: 'One smell found.',
+      smells: [
+        {
+          type: 'long_function',
+          target: 'processData()',
+          severity: 'warning',
+          explanation: 'Function is 200 lines long.',
+          suggestion: 'Extract helper functions.',
+        },
+      ],
+      overallHealth: 'needs_attention',
+    });
+    assert.equal(result.success, true);
+  });
+
+  it('DetectCodeSmellsResultSchema rejects without filePath', () => {
+    const result = DetectCodeSmellsResultSchema.safeParse({
+      summary: 'Clean file.',
+      smells: [],
+      overallHealth: 'healthy',
+    });
+    assert.equal(result.success, false);
+  });
+
+  it('DetectCodeSmellsResultSchema accepts full result with counts', () => {
+    const result = DetectCodeSmellsResultSchema.safeParse({
+      summary: 'Clean file.',
+      smells: [],
+      overallHealth: 'healthy',
+      filePath: 'src/lib/config.ts',
+      language: 'TypeScript',
+      infoCount: 0,
+      warningCount: 0,
+      errorCount: 0,
+    });
+    assert.equal(result.success, true);
+  });
 });
 
 describe('z.toJSONSchema integration', () => {
@@ -249,6 +347,8 @@ describe('z.toJSONSchema integration', () => {
       TestPlanResultSchema,
       AnalyzeComplexityResultSchema,
       DetectApiBreakingResultSchema,
+      GenerateDocumentationResultSchema,
+      DetectCodeSmellsResultSchema,
     ];
 
     for (const schema of schemas) {
@@ -271,6 +371,8 @@ describe('z.toJSONSchema integration', () => {
       AnalyzeComplexityInputSchema,
       DetectApiBreakingInputSchema,
       WebSearchInputSchema,
+      GenerateDocumentationInputSchema,
+      DetectCodeSmellsInputSchema,
     ];
 
     for (const schema of schemas) {
@@ -300,6 +402,18 @@ describe('geminiSchema vs resultSchema parse-path', () => {
     executionResults: [],
   };
 
+  const minimalDocumentationGeminiResult = {
+    summary: 'No public exports.',
+    docBlocks: [],
+    totalExports: 0,
+  };
+
+  const minimalCodeSmellsGeminiResult = {
+    summary: 'Clean file.',
+    smells: [],
+    overallHealth: 'healthy',
+  };
+
   it('RefactorCodeGeminiResultSchema parses without filePath (what Gemini produces)', () => {
     const result = RefactorCodeGeminiResultSchema.safeParse(
       minimalRefactorGeminiResult
@@ -325,6 +439,34 @@ describe('geminiSchema vs resultSchema parse-path', () => {
       groupingIssuesCount: 0,
     });
     assert.equal(result.success, true);
+  });
+
+  it('GenerateDocumentationGeminiResultSchema parses without filePath', () => {
+    const result = GenerateDocumentationGeminiResultSchema.safeParse(
+      minimalDocumentationGeminiResult
+    );
+    assert.equal(result.success, true);
+  });
+
+  it('GenerateDocumentationResultSchema rejects without filePath', () => {
+    const result = GenerateDocumentationResultSchema.safeParse(
+      minimalDocumentationGeminiResult
+    );
+    assert.equal(result.success, false);
+  });
+
+  it('DetectCodeSmellsGeminiResultSchema parses without filePath', () => {
+    const result = DetectCodeSmellsGeminiResultSchema.safeParse(
+      minimalCodeSmellsGeminiResult
+    );
+    assert.equal(result.success, true);
+  });
+
+  it('DetectCodeSmellsResultSchema rejects without filePath', () => {
+    const result = DetectCodeSmellsResultSchema.safeParse(
+      minimalCodeSmellsGeminiResult
+    );
+    assert.equal(result.success, false);
   });
 
   it('AskGeminiResultSchema parses without filePath', () => {
@@ -359,11 +501,21 @@ describe('geminiSchema vs resultSchema parse-path', () => {
       { name: 'RefactorCode', schema: RefactorCodeGeminiResultSchema },
       { name: 'Ask', schema: AskGeminiResultSchema },
       { name: 'VerifyLogic', schema: VerifyLogicGeminiResultSchema },
+      {
+        name: 'GenerateDocumentation',
+        schema: GenerateDocumentationGeminiResultSchema,
+      },
+      { name: 'DetectCodeSmells', schema: DetectCodeSmellsGeminiResultSchema },
     ];
     const resultSchemas = [
       { name: 'RefactorCode', schema: RefactorCodeResultSchema },
       { name: 'Ask', schema: AskResultSchema },
       { name: 'VerifyLogic', schema: VerifyLogicResultSchema },
+      {
+        name: 'GenerateDocumentation',
+        schema: GenerateDocumentationResultSchema,
+      },
+      { name: 'DetectCodeSmells', schema: DetectCodeSmellsResultSchema },
     ];
 
     for (let i = 0; i < geminiSchemas.length; i++) {

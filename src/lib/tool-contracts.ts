@@ -458,6 +458,48 @@ export const TOOL_CONTRACTS = [
       'Use after index_repository for targeted codebase questions.',
     ],
   },
+  {
+    name: 'generate_documentation',
+    purpose:
+      'Generate documentation stubs (JSDoc/TSDoc/docstrings) for all public exports in a cached file.',
+    model: FLASH_MODEL,
+    timeoutMs: DEFAULT_TIMEOUT_EXTENDED_MS,
+    thinkingLevel: FLASH_THINKING_LEVEL,
+    maxOutputTokens: DEFAULT_MAX_OUTPUT_TOKENS,
+    temperature: ANALYSIS_TEMPERATURE,
+    deterministicJson: true,
+    params: cloneParams(LANGUAGE_PARAM),
+    outputShape:
+      '{filePath, language, summary, docBlocks[{target, kind, signature, documentation, example?}], totalExports, documentedCount}',
+    gotchas: [
+      'Requires load_file first.',
+      'Skips private/internal symbols by default.',
+    ],
+    crossToolFlow: [
+      'Use after load_file. Generates documentation for the cached file.',
+    ],
+  },
+  {
+    name: 'detect_code_smells',
+    purpose:
+      'Detect structural code smells (Fowler taxonomy) in a cached file. Does not overlap with refactor_code categories.',
+    model: FLASH_MODEL,
+    timeoutMs: DEFAULT_TIMEOUT_EXTENDED_MS,
+    thinkingLevel: FLASH_THINKING_LEVEL,
+    maxOutputTokens: DEFAULT_MAX_OUTPUT_TOKENS,
+    temperature: ANALYSIS_TEMPERATURE,
+    deterministicJson: true,
+    params: cloneParams(LANGUAGE_PARAM),
+    outputShape:
+      '{filePath, language, summary, smells[{type, target, severity, explanation, suggestion}], overallHealth, infoCount, warningCount, errorCount}',
+    gotchas: [
+      'Requires load_file first.',
+      'Focuses on structural anti-patterns, not naming/complexity/duplication/grouping (those belong to refactor_code).',
+    ],
+    crossToolFlow: [
+      'Use after load_file. Complements refactor_code with smell detection.',
+    ],
+  },
 ] as const satisfies readonly ToolContract[];
 
 const TOOL_CONTRACTS_BY_NAME = new Map<string, ToolContract>(
