@@ -5,7 +5,7 @@ import { createNoFileError, getFile } from '../lib/file-store.js';
 import {
   type CodeExecutionResponse,
   generateWithCodeExecution,
-} from '../lib/gemini.js';
+} from '../lib/gemini/index.js';
 import {
   createErrorToolResponse,
   createToolResponse,

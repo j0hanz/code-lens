@@ -44,9 +44,11 @@ import {
   getFile,
   validateFileBudget,
 } from './file-store.js';
-import { stripJsonSchemaConstraints } from './gemini.js';
-import { generateStructuredJson } from './gemini.js';
-import type { GeminiStructuredRequest } from './gemini.js';
+import {
+  type GeminiStructuredRequest,
+  generateStructuredJson,
+  stripJsonSchemaConstraints,
+} from './gemini/index.js';
 import {
   createFailureStatusMessage,
   DEFAULT_PROGRESS_CONTEXT,

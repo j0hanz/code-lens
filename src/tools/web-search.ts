@@ -1,7 +1,7 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
 import { getErrorMessage } from '../lib/errors.js';
-import { generateGroundedContent } from '../lib/gemini.js';
+import { generateGroundedContent } from '../lib/gemini/index.js';
 import { createErrorToolResponse, wrapToolHandler } from '../lib/tools.js';
 import { WebSearchInputSchema } from '../schemas/inputs.js';
 import { DefaultOutputSchema } from '../schemas/outputs.js';

@@ -1,299 +1,70 @@
-import { AsyncLocalStorage } from 'node:async_hooks';
-import { randomInt } from 'node:crypto';
-import { randomUUID } from 'node:crypto';
-import { EventEmitter } from 'node:events';
 import { performance } from 'node:perf_hooks';
 import { setTimeout as sleep } from 'node:timers/promises';
-import { debuglog } from 'node:util';
 
-import {
-  FinishReason,
-  GoogleGenAI,
-  HarmBlockThreshold,
-  HarmCategory,
-  ThinkingLevel,
-} from '@google/genai';
+import { FinishReason, type GoogleGenAI } from '@google/genai';
 import type { GenerateContentConfig } from '@google/genai';
 
-import { ConcurrencyLimiter } from './concurrency.js';
-import { createCachedEnvInt } from './config.js';
+import { ConcurrencyLimiter } from '../concurrency.js';
+import { getErrorMessage, toRecord } from '../errors.js';
+import { formatUsNumber } from '../format.js';
 import {
-  getErrorMessage,
-  RETRYABLE_UPSTREAM_ERROR_PATTERN,
-  toRecord,
-} from './errors.js';
-import { formatUsNumber } from './format.js';
+  emitGeminiLog,
+  geminiContext,
+  getClient,
+  nextRequestId,
+  safeCallOnLog,
+} from './client.js';
+import {
+  batchPollIntervalMsConfig,
+  batchTimeoutMsConfig,
+  CANCELLED_REQUEST_MESSAGE,
+  concurrencyWaitMsConfig,
+  DEFAULT_MAX_OUTPUT_TOKENS,
+  DEFAULT_MAX_RETRIES,
+  DEFAULT_MODEL,
+  DEFAULT_TIMEOUT_MS,
+  getDefaultBatchMode,
+  getDefaultIncludeThoughts,
+  getDefaultModel,
+  getSafetySettings,
+  getSafetyThreshold,
+  getThinkingConfig,
+  maxConcurrentBatchCallsConfig,
+  maxConcurrentCallsConfig,
+  MODEL_FALLBACK_TARGET,
+} from './config.js';
+import {
+  canRetryAttempt,
+  getNumericErrorCode,
+  getRetryDelayMs,
+  toUpperStringCode,
+} from './retry.js';
+import type {
+  CodeExecutionBlock,
+  CodeExecutionResponse,
+  CodeExecutionResultBlock,
+  GeminiOnLog,
+  GeminiStructuredRequest,
+} from './types.js';
 
-export type JsonObject = Record<string, unknown>;
-export type GeminiLogHandler = (level: string, data: unknown) => Promise<void>;
-export type GeminiThinkingLevel = 'minimal' | 'low' | 'medium' | 'high';
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
 
-export interface GeminiRequestExecutionOptions {
-  maxRetries?: number;
-  timeoutMs?: number;
-  temperature?: number;
-  maxOutputTokens?: number;
-  thinkingLevel?: GeminiThinkingLevel;
-  includeThoughts?: boolean;
-  signal?: AbortSignal;
-  onLog?: GeminiLogHandler;
-  responseKeyOrdering?: readonly string[];
-  batchMode?: 'off' | 'inline';
-  useGrounding?: boolean;
-  useCodeExecution?: boolean;
-}
-
-export interface GeminiStructuredRequestOptions extends GeminiRequestExecutionOptions {
-  model?: string;
-}
-
-export interface GeminiStructuredRequest extends GeminiStructuredRequestOptions {
-  systemInstruction?: string;
-  prompt: string;
-  responseSchema: Readonly<JsonObject>;
-}
-
-const CONSTRAINT_KEY_VALUES = [
-  'minLength',
-  'maxLength',
-  'minimum',
-  'maximum',
-  'exclusiveMinimum',
-  'exclusiveMaximum',
-  'minItems',
-  'maxItems',
-  'multipleOf',
-  'pattern',
-  'format',
-] as const;
-const CONSTRAINT_KEYS = new Set<string>(CONSTRAINT_KEY_VALUES);
-const INTEGER_JSON_TYPE = 'integer';
-const NUMBER_JSON_TYPE = 'number';
-type JsonRecord = Record<string, unknown>;
-
-function isJsonRecord(value: unknown): value is JsonRecord {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function stripConstraintValue(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    const stripped = new Array<unknown>(value.length);
-    for (let index = 0; index < value.length; index += 1) {
-      stripped[index] = stripConstraintValue(value[index]);
-    }
-    return stripped;
-  }
-
-  if (isJsonRecord(value)) {
-    return stripJsonSchemaConstraints(value);
-  }
-
-  return value;
-}
-
-export function stripJsonSchemaConstraints(schema: JsonRecord): JsonRecord {
-  const result: JsonRecord = {};
-
-  for (const [key, value] of Object.entries(schema)) {
-    if (CONSTRAINT_KEYS.has(key)) {
-      continue;
-    }
-
-    if (key === 'type' && value === INTEGER_JSON_TYPE) {
-      result[key] = NUMBER_JSON_TYPE;
-      continue;
-    }
-
-    result[key] = stripConstraintValue(value);
-  }
-
-  return result;
-}
-
-const DIGITS_ONLY_PATTERN = /^\d+$/;
-const RETRY_DELAY_BASE_MS = 300;
-const RETRY_DELAY_MAX_MS = 5_000;
-const RETRY_JITTER_RATIO = 0.2;
-
-export const RETRYABLE_NUMERIC_CODES = new Set([429, 500, 502, 503, 504]);
-
-export const RETRYABLE_TRANSIENT_CODES = new Set([
-  'RESOURCE_EXHAUSTED',
-  'UNAVAILABLE',
-  'DEADLINE_EXCEEDED',
-  'INTERNAL',
-  'ABORTED',
-]);
-
-function getNestedError(error: unknown): Record<string, unknown> | undefined {
-  const record = toRecord(error);
-  if (!record) {
-    return undefined;
-  }
-
-  const nested = record.error;
-  const nestedRecord = toRecord(nested);
-  if (!nestedRecord) {
-    return record;
-  }
-
-  return nestedRecord;
-}
-
-function toNumericCode(candidate: unknown): number | undefined {
-  if (typeof candidate === 'number' && Number.isFinite(candidate)) {
-    return candidate;
-  }
-
-  if (typeof candidate === 'string' && DIGITS_ONLY_PATTERN.test(candidate)) {
-    return Number.parseInt(candidate, 10);
-  }
-
-  return undefined;
-}
-
-export function toUpperStringCode(candidate: unknown): string | undefined {
-  if (typeof candidate !== 'string') {
-    return undefined;
-  }
-
-  const normalized = candidate.trim().toUpperCase();
-  return normalized.length > 0 ? normalized : undefined;
-}
-
-function findFirstNumericCode(
-  record: Record<string, unknown>,
-  keys: readonly string[]
-): number | undefined {
-  for (const key of keys) {
-    const numericCode = toNumericCode(record[key]);
-    if (numericCode !== undefined) {
-      return numericCode;
-    }
-  }
-  return undefined;
-}
-
-function findFirstStringCode(
-  record: Record<string, unknown>,
-  keys: readonly string[]
-): string | undefined {
-  for (const key of keys) {
-    const stringCode = toUpperStringCode(record[key]);
-    if (stringCode !== undefined) {
-      return stringCode;
-    }
-  }
-  return undefined;
-}
-
-const NUMERIC_ERROR_KEYS = ['status', 'statusCode', 'code'] as const;
-
-export function getNumericErrorCode(error: unknown): number | undefined {
-  const record = getNestedError(error);
-  if (!record) {
-    return undefined;
-  }
-
-  return findFirstNumericCode(record, NUMERIC_ERROR_KEYS);
-}
-
-const TRANSIENT_ERROR_KEYS = ['code', 'status', 'statusText'] as const;
-
-function getTransientErrorCode(error: unknown): string | undefined {
-  const record = getNestedError(error);
-  if (!record) {
-    return undefined;
-  }
-
-  return findFirstStringCode(record, TRANSIENT_ERROR_KEYS);
-}
-
-export function shouldRetry(error: unknown): boolean {
-  const numericCode = getNumericErrorCode(error);
-  if (numericCode !== undefined && RETRYABLE_NUMERIC_CODES.has(numericCode)) {
-    return true;
-  }
-
-  const transientCode = getTransientErrorCode(error);
-  if (
-    transientCode !== undefined &&
-    RETRYABLE_TRANSIENT_CODES.has(transientCode)
-  ) {
-    return true;
-  }
-
-  const message = getErrorMessage(error);
-  return RETRYABLE_UPSTREAM_ERROR_PATTERN.test(message);
-}
-
-export function getRetryDelayMs(attempt: number): number {
-  const exponentialDelay = RETRY_DELAY_BASE_MS * 2 ** attempt;
-  const boundedDelay = Math.min(RETRY_DELAY_MAX_MS, exponentialDelay);
-  const jitterWindow = Math.max(
-    1,
-    Math.floor(boundedDelay * RETRY_JITTER_RATIO)
-  );
-  const jitter = randomInt(0, jitterWindow);
-  return Math.min(RETRY_DELAY_MAX_MS, boundedDelay + jitter);
-}
-
-export function canRetryAttempt(
-  attempt: number,
-  maxRetries: number,
-  error: unknown
-): boolean {
-  return attempt < maxRetries && shouldRetry(error);
-}
-
-// Lazy-cached: first call happens after parseCommandLineArgs() sets GEMINI_MODEL.
-let _defaultModel: string | undefined;
-const DEFAULT_MODEL = 'gemini-3-flash-preview';
-const MODEL_FALLBACK_TARGET = 'gemini-2.5-flash';
-const GEMINI_MODEL_ENV_VAR = 'GEMINI_MODEL';
-const GEMINI_HARM_BLOCK_THRESHOLD_ENV_VAR = 'GEMINI_HARM_BLOCK_THRESHOLD';
-const GEMINI_INCLUDE_THOUGHTS_ENV_VAR = 'GEMINI_INCLUDE_THOUGHTS';
-const GEMINI_BATCH_MODE_ENV_VAR = 'GEMINI_BATCH_MODE';
-const GEMINI_API_KEY_ENV_VAR = 'GEMINI_API_KEY';
-const GOOGLE_API_KEY_ENV_VAR = 'GOOGLE_API_KEY';
-type GeminiOnLog = GeminiStructuredRequest['onLog'];
-
-function getDefaultModel(): string {
-  _defaultModel ??= process.env[GEMINI_MODEL_ENV_VAR] ?? DEFAULT_MODEL;
-  return _defaultModel;
-}
-
-const DEFAULT_MAX_RETRIES = 3;
-const DEFAULT_TIMEOUT_MS = 90_000;
-const DEFAULT_MAX_OUTPUT_TOKENS = 16_384;
-const DEFAULT_SAFETY_THRESHOLD = HarmBlockThreshold.BLOCK_NONE;
-const DEFAULT_INCLUDE_THOUGHTS = false;
-const DEFAULT_BATCH_MODE = 'off';
-const UNKNOWN_REQUEST_CONTEXT_VALUE = 'unknown';
-const TRUE_ENV_VALUES = new Set(['1', 'true', 'yes', 'on']);
-const FALSE_ENV_VALUES = new Set(['0', 'false', 'no', 'off']);
 const SLEEP_UNREF_OPTIONS = { ref: false } as const;
 const JSON_CODE_BLOCK_PATTERN = /```(?:json)?\n?([\s\S]*?)(?=\n?```)/u;
 const NEVER_ABORT_SIGNAL = new AbortController().signal;
-const CANCELLED_REQUEST_MESSAGE = 'Gemini request was cancelled.';
 
-const maxConcurrentCallsConfig = createCachedEnvInt('MAX_CONCURRENT_CALLS', 10);
-const maxConcurrentBatchCallsConfig = createCachedEnvInt(
-  'MAX_CONCURRENT_BATCH_CALLS',
-  2
-);
-const concurrencyWaitMsConfig = createCachedEnvInt(
-  'MAX_CONCURRENT_CALLS_WAIT_MS',
-  2_000
-);
-const batchPollIntervalMsConfig = createCachedEnvInt(
-  'GEMINI_BATCH_POLL_INTERVAL_MS',
-  2_000
-);
-const batchTimeoutMsConfig = createCachedEnvInt(
-  'GEMINI_BATCH_TIMEOUT_MS',
-  120_000
-);
+// ---------------------------------------------------------------------------
+// Concurrency limiters
+// ---------------------------------------------------------------------------
+
+function formatConcurrencyLimitErrorMessage(
+  limit: number,
+  waitLimitMs: number
+): string {
+  return `Too many concurrent Gemini calls (limit: ${formatUsNumber(limit)}; waited ${formatUsNumber(waitLimitMs)}ms).`;
+}
 
 const callLimiter = new ConcurrencyLimiter(
   () => maxConcurrentCallsConfig.get(),
@@ -308,128 +79,10 @@ const batchCallLimiter = new ConcurrencyLimiter(
   (limit, ms) => formatConcurrencyLimitErrorMessage(limit, ms),
   () => CANCELLED_REQUEST_MESSAGE
 );
-const SAFETY_CATEGORIES = [
-  HarmCategory.HARM_CATEGORY_HATE_SPEECH,
-  HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
-  HarmCategory.HARM_CATEGORY_HARASSMENT,
-  HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
-] as const;
 
-const SAFETY_THRESHOLD_BY_NAME = {
-  BLOCK_NONE: HarmBlockThreshold.BLOCK_NONE,
-  BLOCK_ONLY_HIGH: HarmBlockThreshold.BLOCK_ONLY_HIGH,
-  BLOCK_MEDIUM_AND_ABOVE: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
-  BLOCK_LOW_AND_ABOVE: HarmBlockThreshold.BLOCK_LOW_AND_ABOVE,
-} as const;
-
-let cachedSafetyThresholdEnv: string | undefined;
-let cachedSafetyThreshold = DEFAULT_SAFETY_THRESHOLD;
-let cachedIncludeThoughtsEnv: string | undefined;
-let cachedIncludeThoughts = DEFAULT_INCLUDE_THOUGHTS;
-const safetySettingsCache = new Map<
-  HarmBlockThreshold,
-  { category: HarmCategory; threshold: HarmBlockThreshold }[]
->();
-
-function getSafetyThreshold(): HarmBlockThreshold {
-  const threshold = process.env[GEMINI_HARM_BLOCK_THRESHOLD_ENV_VAR];
-  if (threshold === cachedSafetyThresholdEnv) {
-    return cachedSafetyThreshold;
-  }
-
-  cachedSafetyThresholdEnv = threshold;
-  if (!threshold) {
-    cachedSafetyThreshold = DEFAULT_SAFETY_THRESHOLD;
-    return cachedSafetyThreshold;
-  }
-
-  const parsedThreshold = parseSafetyThreshold(threshold);
-  if (parsedThreshold) {
-    cachedSafetyThreshold = parsedThreshold;
-    return cachedSafetyThreshold;
-  }
-
-  cachedSafetyThreshold = DEFAULT_SAFETY_THRESHOLD;
-  return cachedSafetyThreshold;
-}
-
-function parseSafetyThreshold(
-  threshold: string
-): HarmBlockThreshold | undefined {
-  const normalizedThreshold = threshold.trim().toUpperCase();
-  if (!(normalizedThreshold in SAFETY_THRESHOLD_BY_NAME)) {
-    return undefined;
-  }
-
-  return SAFETY_THRESHOLD_BY_NAME[
-    normalizedThreshold as keyof typeof SAFETY_THRESHOLD_BY_NAME
-  ];
-}
-
-const THINKING_LEVEL_MAP: Record<string, ThinkingLevel> = {
-  minimal: ThinkingLevel.MINIMAL,
-  low: ThinkingLevel.LOW,
-  medium: ThinkingLevel.MEDIUM,
-  high: ThinkingLevel.HIGH,
-};
-
-function getThinkingConfig(
-  thinkingLevel: 'minimal' | 'low' | 'medium' | 'high' | undefined,
-  includeThoughts: boolean
-): { thinkingLevel?: ThinkingLevel; includeThoughts?: true } | undefined {
-  if (!thinkingLevel && !includeThoughts) {
-    return undefined;
-  }
-
-  return {
-    ...(thinkingLevel
-      ? { thinkingLevel: THINKING_LEVEL_MAP[thinkingLevel] }
-      : {}),
-    ...(includeThoughts ? { includeThoughts: true } : {}),
-  };
-}
-
-function parseBooleanEnv(value: string): boolean | undefined {
-  const normalized = value.trim().toLowerCase();
-  if (normalized.length === 0) {
-    return undefined;
-  }
-
-  if (TRUE_ENV_VALUES.has(normalized)) {
-    return true;
-  }
-
-  if (FALSE_ENV_VALUES.has(normalized)) {
-    return false;
-  }
-
-  return undefined;
-}
-
-function getDefaultIncludeThoughts(): boolean {
-  const value = process.env[GEMINI_INCLUDE_THOUGHTS_ENV_VAR];
-  if (value === cachedIncludeThoughtsEnv) {
-    return cachedIncludeThoughts;
-  }
-
-  cachedIncludeThoughtsEnv = value;
-  if (!value) {
-    cachedIncludeThoughts = DEFAULT_INCLUDE_THOUGHTS;
-    return cachedIncludeThoughts;
-  }
-
-  cachedIncludeThoughts = parseBooleanEnv(value) ?? DEFAULT_INCLUDE_THOUGHTS;
-  return cachedIncludeThoughts;
-}
-
-function getDefaultBatchMode(): 'off' | 'inline' {
-  const value = process.env[GEMINI_BATCH_MODE_ENV_VAR]?.trim().toLowerCase();
-  if (value === 'inline') {
-    return 'inline';
-  }
-
-  return DEFAULT_BATCH_MODE;
-}
+// ---------------------------------------------------------------------------
+// Generation config helpers
+// ---------------------------------------------------------------------------
 
 function applyResponseKeyOrdering(
   responseSchema: Readonly<Record<string, unknown>>,
@@ -449,129 +102,6 @@ function getPromptWithFunctionCallingContext(
   request: GeminiStructuredRequest
 ): string {
   return request.prompt;
-}
-
-function getSafetySettings(
-  threshold: HarmBlockThreshold
-): { category: HarmCategory; threshold: HarmBlockThreshold }[] {
-  const cached = safetySettingsCache.get(threshold);
-  if (cached) {
-    return cached;
-  }
-
-  const settings = SAFETY_CATEGORIES.map((category) => ({
-    category,
-    threshold,
-  }));
-  safetySettingsCache.set(threshold, settings);
-  return settings;
-}
-
-let cachedClient: GoogleGenAI | undefined;
-
-export const geminiEvents = new EventEmitter();
-
-const debug = debuglog('gemini') as ReturnType<typeof debuglog> & {
-  enabled?: boolean;
-};
-
-geminiEvents.on('log', (payload: unknown) => {
-  if (debug.enabled) {
-    debug('%j', payload);
-  }
-});
-
-interface GeminiRequestContext {
-  requestId: string;
-  model: string;
-}
-
-type GeminiLogLevel = 'info' | 'warning' | 'error';
-
-interface GeminiLogPayload {
-  event: string;
-  details: Record<string, unknown>;
-}
-
-const geminiContext = new AsyncLocalStorage<GeminiRequestContext>({
-  name: 'gemini_request',
-  defaultValue: {
-    requestId: UNKNOWN_REQUEST_CONTEXT_VALUE,
-    model: UNKNOWN_REQUEST_CONTEXT_VALUE,
-  },
-});
-
-const UNKNOWN_CONTEXT: GeminiRequestContext = {
-  requestId: UNKNOWN_REQUEST_CONTEXT_VALUE,
-  model: UNKNOWN_REQUEST_CONTEXT_VALUE,
-};
-
-export function getCurrentRequestId(): string {
-  const context = geminiContext.getStore();
-  return context?.requestId ?? UNKNOWN_REQUEST_CONTEXT_VALUE;
-}
-
-function getApiKey(): string {
-  const apiKey =
-    process.env[GEMINI_API_KEY_ENV_VAR] ?? process.env[GOOGLE_API_KEY_ENV_VAR];
-  if (!apiKey) {
-    throw new Error(
-      `Missing ${GEMINI_API_KEY_ENV_VAR} or ${GOOGLE_API_KEY_ENV_VAR}.`
-    );
-  }
-
-  return apiKey;
-}
-
-function getClient(): GoogleGenAI {
-  cachedClient ??= new GoogleGenAI({
-    apiKey: getApiKey(),
-    apiVersion: 'v1beta',
-  });
-
-  return cachedClient;
-}
-
-export function setClientForTesting(client: GoogleGenAI): void {
-  cachedClient = client;
-}
-
-function nextRequestId(): string {
-  return randomUUID();
-}
-
-function logEvent(event: string, details: Record<string, unknown>): void {
-  const context = geminiContext.getStore() ?? UNKNOWN_CONTEXT;
-  geminiEvents.emit('log', {
-    event,
-    requestId: context.requestId,
-    model: context.model,
-    ...details,
-  });
-}
-
-async function safeCallOnLog(
-  onLog: GeminiOnLog,
-  level: string,
-  data: Record<string, unknown>
-): Promise<void> {
-  try {
-    await onLog?.(level, data);
-  } catch {
-    // Log callbacks are best-effort; never fail the tool call.
-  }
-}
-
-async function emitGeminiLog(
-  onLog: GeminiOnLog,
-  level: GeminiLogLevel,
-  payload: GeminiLogPayload
-): Promise<void> {
-  logEvent(payload.event, payload.details);
-  await safeCallOnLog(onLog, level, {
-    event: payload.event,
-    ...payload.details,
-  });
 }
 
 function buildGenerationConfig(
@@ -620,6 +150,10 @@ function buildGenerationConfig(
   return config;
 }
 
+// ---------------------------------------------------------------------------
+// Signal / sleep helpers
+// ---------------------------------------------------------------------------
+
 function combineSignals(
   signal: AbortSignal,
   requestSignal?: AbortSignal
@@ -636,6 +170,10 @@ function throwIfRequestCancelled(requestSignal?: AbortSignal): void {
 function getSleepOptions(signal?: AbortSignal): Parameters<typeof sleep>[2] {
   return signal ? { ...SLEEP_UNREF_OPTIONS, signal } : SLEEP_UNREF_OPTIONS;
 }
+
+// ---------------------------------------------------------------------------
+// Response parsing
+// ---------------------------------------------------------------------------
 
 function parseStructuredResponse(responseText: string | undefined): unknown {
   if (!responseText) {
@@ -660,16 +198,17 @@ function parseStructuredResponse(responseText: string | undefined): unknown {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Error message formatters
+// ---------------------------------------------------------------------------
+
 function formatTimeoutErrorMessage(timeoutMs: number): string {
   return `Gemini request timed out after ${formatUsNumber(timeoutMs)}ms.`;
 }
 
-function formatConcurrencyLimitErrorMessage(
-  limit: number,
-  waitLimitMs: number
-): string {
-  return `Too many concurrent Gemini calls (limit: ${formatUsNumber(limit)}; waited ${formatUsNumber(waitLimitMs)}ms).`;
-}
+// ---------------------------------------------------------------------------
+// Core generation call with timeout
+// ---------------------------------------------------------------------------
 
 async function generateContentWithTimeout(
   request: GeminiStructuredRequest,
@@ -703,6 +242,10 @@ async function generateContentWithTimeout(
   }
 }
 
+// ---------------------------------------------------------------------------
+// Thoughts extraction
+// ---------------------------------------------------------------------------
+
 function extractThoughtsFromParts(parts: unknown): string | undefined {
   if (!Array.isArray(parts)) {
     return undefined;
@@ -722,6 +265,80 @@ function extractThoughtsFromParts(parts: unknown): string | undefined {
 
   return thoughtParts.map((part) => part.text).join('\n\n');
 }
+
+// ---------------------------------------------------------------------------
+// Code execution response extraction
+// ---------------------------------------------------------------------------
+
+interface ExecutableCodePart {
+  executableCode: { code?: string; language?: string };
+}
+
+interface CodeExecutionResultPart {
+  codeExecutionResult: { outcome?: string; output?: string };
+}
+
+function isExecutableCodePart(part: unknown): part is ExecutableCodePart {
+  return (
+    typeof part === 'object' &&
+    part !== null &&
+    'executableCode' in part &&
+    typeof (part as ExecutableCodePart).executableCode === 'object'
+  );
+}
+
+function isCodeExecutionResultPart(
+  part: unknown
+): part is CodeExecutionResultPart {
+  return (
+    typeof part === 'object' &&
+    part !== null &&
+    'codeExecutionResult' in part &&
+    typeof (part as CodeExecutionResultPart).codeExecutionResult === 'object'
+  );
+}
+
+function extractCodeExecutionResponse(
+  response: Awaited<ReturnType<GoogleGenAI['models']['generateContent']>>
+): CodeExecutionResponse {
+  const parts = response.candidates?.[0]?.content?.parts;
+  const textSegments: string[] = [];
+  const codeBlocks: CodeExecutionBlock[] = [];
+  const executionResults: CodeExecutionResultBlock[] = [];
+
+  if (Array.isArray(parts)) {
+    for (const part of parts) {
+      if (isExecutableCodePart(part)) {
+        codeBlocks.push({
+          code: part.executableCode.code ?? '',
+          language: part.executableCode.language ?? 'python',
+        });
+      } else if (isCodeExecutionResultPart(part)) {
+        executionResults.push({
+          outcome: part.codeExecutionResult.outcome ?? 'OUTCOME_UNSPECIFIED',
+          output: part.codeExecutionResult.output ?? '',
+        });
+      } else if (
+        typeof part === 'object' &&
+        'text' in part &&
+        typeof (part as { text: unknown }).text === 'string' &&
+        !(part as { thought?: unknown }).thought
+      ) {
+        textSegments.push((part as { text: string }).text);
+      }
+    }
+  }
+
+  return {
+    text: textSegments.join('\n\n') || (response.text ?? ''),
+    codeBlocks,
+    executionResults,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Single-attempt execution
+// ---------------------------------------------------------------------------
 
 async function executeAttempt(
   request: GeminiStructuredRequest,
@@ -769,6 +386,10 @@ async function executeAttempt(
 
   return parseStructuredResponse(response.text);
 }
+
+// ---------------------------------------------------------------------------
+// Retry orchestration
+// ---------------------------------------------------------------------------
 
 async function waitBeforeRetry(
   attempt: number,
@@ -820,8 +441,20 @@ async function throwGeminiFailure(
   );
 }
 
+// ---------------------------------------------------------------------------
+// Model fallback
+// ---------------------------------------------------------------------------
+
 function shouldUseModelFallback(error: unknown, model: string): boolean {
   return getNumericErrorCode(error) === 404 && model === DEFAULT_MODEL;
+}
+
+function omitThinkingLevel(
+  request: GeminiStructuredRequest
+): GeminiStructuredRequest {
+  const copy = { ...request };
+  Reflect.deleteProperty(copy, 'thinkingLevel');
+  return copy;
 }
 
 async function applyModelFallback(
@@ -909,13 +542,9 @@ async function runWithRetries(
   return throwGeminiFailure(maxRetries + 1, lastError, onLog);
 }
 
-function omitThinkingLevel(
-  request: GeminiStructuredRequest
-): GeminiStructuredRequest {
-  const copy = { ...request };
-  Reflect.deleteProperty(copy, 'thinkingLevel');
-  return copy;
-}
+// ---------------------------------------------------------------------------
+// Batch subsystem
+// ---------------------------------------------------------------------------
 
 type ExecutionMode = 'off' | 'inline';
 
@@ -1241,6 +870,10 @@ async function runInlineBatchWithPolling(
   }
 }
 
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
+
 export function getGeminiQueueSnapshot(): {
   activeWaiters: number;
   activeCalls: number;
@@ -1252,88 +885,6 @@ export function getGeminiQueueSnapshot(): {
     activeCalls: callLimiter.active,
     activeBatchWaiters: batchCallLimiter.pendingCount,
     activeBatchCalls: batchCallLimiter.active,
-  };
-}
-
-export interface CodeExecutionBlock {
-  code: string;
-  language: string;
-}
-
-export interface CodeExecutionResultBlock {
-  outcome: string;
-  output: string;
-}
-
-export interface CodeExecutionResponse {
-  text: string;
-  codeBlocks: CodeExecutionBlock[];
-  executionResults: CodeExecutionResultBlock[];
-}
-
-interface ExecutableCodePart {
-  executableCode: { code?: string; language?: string };
-}
-
-interface CodeExecutionResultPart {
-  codeExecutionResult: { outcome?: string; output?: string };
-}
-
-function isExecutableCodePart(part: unknown): part is ExecutableCodePart {
-  return (
-    typeof part === 'object' &&
-    part !== null &&
-    'executableCode' in part &&
-    typeof (part as ExecutableCodePart).executableCode === 'object'
-  );
-}
-
-function isCodeExecutionResultPart(
-  part: unknown
-): part is CodeExecutionResultPart {
-  return (
-    typeof part === 'object' &&
-    part !== null &&
-    'codeExecutionResult' in part &&
-    typeof (part as CodeExecutionResultPart).codeExecutionResult === 'object'
-  );
-}
-
-function extractCodeExecutionResponse(
-  response: Awaited<ReturnType<GoogleGenAI['models']['generateContent']>>
-): CodeExecutionResponse {
-  const parts = response.candidates?.[0]?.content?.parts;
-  const textSegments: string[] = [];
-  const codeBlocks: CodeExecutionBlock[] = [];
-  const executionResults: CodeExecutionResultBlock[] = [];
-
-  if (Array.isArray(parts)) {
-    for (const part of parts) {
-      if (isExecutableCodePart(part)) {
-        codeBlocks.push({
-          code: part.executableCode.code ?? '',
-          language: part.executableCode.language ?? 'python',
-        });
-      } else if (isCodeExecutionResultPart(part)) {
-        executionResults.push({
-          outcome: part.codeExecutionResult.outcome ?? 'OUTCOME_UNSPECIFIED',
-          output: part.codeExecutionResult.output ?? '',
-        });
-      } else if (
-        typeof part === 'object' &&
-        'text' in part &&
-        typeof (part as { text: unknown }).text === 'string' &&
-        !(part as { thought?: unknown }).thought
-      ) {
-        textSegments.push((part as { text: string }).text);
-      }
-    }
-  }
-
-  return {
-    text: textSegments.join('\n\n') || (response.text ?? ''),
-    codeBlocks,
-    executionResults,
   };
 }
 
