@@ -261,12 +261,15 @@ interface ThoughtPart {
   text: string;
 }
 
+function isObject(val: unknown): val is Record<string, unknown> {
+  return typeof val === 'object' && val !== null;
+}
+
 function isThoughtPart(part: unknown): part is ThoughtPart {
   return (
-    typeof part === 'object' &&
-    part !== null &&
-    (part as { thought?: unknown }).thought === true &&
-    typeof (part as { text?: unknown }).text === 'string'
+    isObject(part) &&
+    part['thought'] === true &&
+    typeof part['text'] === 'string'
   );
 }
 
@@ -276,11 +279,10 @@ interface TextOnlyPart {
 
 function isTextOnlyPart(part: unknown): part is TextOnlyPart {
   return (
-    typeof part === 'object' &&
-    part !== null &&
+    isObject(part) &&
     'text' in part &&
-    typeof (part as { text: unknown }).text === 'string' &&
-    !(part as { thought?: unknown }).thought
+    typeof part['text'] === 'string' &&
+    !part['thought']
   );
 }
 
@@ -312,10 +314,9 @@ interface CodeExecutionResultPart {
 
 function isExecutableCodePart(part: unknown): part is ExecutableCodePart {
   return (
-    typeof part === 'object' &&
-    part !== null &&
+    isObject(part) &&
     'executableCode' in part &&
-    typeof (part as ExecutableCodePart).executableCode === 'object'
+    isObject(part['executableCode'])
   );
 }
 
@@ -323,10 +324,9 @@ function isCodeExecutionResultPart(
   part: unknown
 ): part is CodeExecutionResultPart {
   return (
-    typeof part === 'object' &&
-    part !== null &&
+    isObject(part) &&
     'codeExecutionResult' in part &&
-    typeof (part as CodeExecutionResultPart).codeExecutionResult === 'object'
+    isObject(part['codeExecutionResult'])
   );
 }
 

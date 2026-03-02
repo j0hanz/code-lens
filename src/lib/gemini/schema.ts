@@ -22,19 +22,22 @@ function isJsonRecord(value: unknown): value is JsonRecord {
 }
 
 function stripConstraintValue(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    const stripped = new Array<unknown>(value.length);
-    for (let index = 0; index < value.length; index += 1) {
-      stripped[index] = stripConstraintValue(value[index]);
+  if (!isJsonRecord(value)) {
+    if (!Array.isArray(value)) {
+      return value;
     }
-    return stripped;
+
+    const hasNested = value.some((v) => isJsonRecord(v) || Array.isArray(v));
+    if (!hasNested) {
+      return value;
+    }
   }
 
-  if (isJsonRecord(value)) {
-    return stripJsonSchemaConstraints(value);
+  if (Array.isArray(value)) {
+    return value.map((v) => stripConstraintValue(v));
   }
 
-  return value;
+  return stripJsonSchemaConstraints(value);
 }
 
 export function stripJsonSchemaConstraints(schema: JsonRecord): JsonRecord {

@@ -53,13 +53,45 @@ const SAFETY_THRESHOLD_BY_NAME = {
   BLOCK_LOW_AND_ABOVE: HarmBlockThreshold.BLOCK_LOW_AND_ABOVE,
 } as const;
 
-let cachedSafetyThresholdEnv: string | undefined;
-let cachedSafetyThreshold = DEFAULT_SAFETY_THRESHOLD;
+function createCachedEnvParser<T>(
+  envKey: string,
+  parser: (raw: string) => T | undefined,
+  defaultValue: T
+): () => T {
+  let cachedRaw: string | undefined;
+  let cachedParsed = defaultValue;
 
-const safetySettingsCache = new Map<
+  return () => {
+    const raw = process.env[envKey];
+    if (raw === cachedRaw) return cachedParsed;
+
+    cachedRaw = raw;
+    if (!raw) {
+      cachedParsed = defaultValue;
+      return cachedParsed;
+    }
+
+    cachedParsed = parser(raw) ?? defaultValue;
+    return cachedParsed;
+  };
+}
+
+const SAFETY_THRESHOLDS = [
+  HarmBlockThreshold.BLOCK_NONE,
+  HarmBlockThreshold.BLOCK_ONLY_HIGH,
+  HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
+  HarmBlockThreshold.BLOCK_LOW_AND_ABOVE,
+] as const;
+
+const SAFETY_SETTINGS_MAP = Object.fromEntries(
+  SAFETY_THRESHOLDS.map((threshold) => [
+    threshold,
+    SAFETY_CATEGORIES.map((category) => ({ category, threshold })),
+  ])
+) as Record<
   HarmBlockThreshold,
   { category: HarmCategory; threshold: HarmBlockThreshold }[]
->();
+>;
 
 function parseSafetyThreshold(
   threshold: string
@@ -74,42 +106,16 @@ function parseSafetyThreshold(
   ];
 }
 
-export function getSafetyThreshold(): HarmBlockThreshold {
-  const threshold = process.env[GEMINI_HARM_BLOCK_THRESHOLD_ENV_VAR];
-  if (threshold === cachedSafetyThresholdEnv) {
-    return cachedSafetyThreshold;
-  }
-
-  cachedSafetyThresholdEnv = threshold;
-  if (!threshold) {
-    cachedSafetyThreshold = DEFAULT_SAFETY_THRESHOLD;
-    return cachedSafetyThreshold;
-  }
-
-  const parsedThreshold = parseSafetyThreshold(threshold);
-  if (parsedThreshold) {
-    cachedSafetyThreshold = parsedThreshold;
-    return cachedSafetyThreshold;
-  }
-
-  cachedSafetyThreshold = DEFAULT_SAFETY_THRESHOLD;
-  return cachedSafetyThreshold;
-}
+export const getSafetyThreshold = createCachedEnvParser(
+  GEMINI_HARM_BLOCK_THRESHOLD_ENV_VAR,
+  parseSafetyThreshold,
+  DEFAULT_SAFETY_THRESHOLD
+);
 
 export function getSafetySettings(
   threshold: HarmBlockThreshold
 ): { category: HarmCategory; threshold: HarmBlockThreshold }[] {
-  const cached = safetySettingsCache.get(threshold);
-  if (cached) {
-    return cached;
-  }
-
-  const settings = SAFETY_CATEGORIES.map((category) => ({
-    category,
-    threshold,
-  }));
-  safetySettingsCache.set(threshold, settings);
-  return settings;
+  return SAFETY_SETTINGS_MAP[threshold];
 }
 
 // ---------------------------------------------------------------------------
@@ -150,9 +156,6 @@ const DEFAULT_BATCH_MODE = 'off';
 const TRUE_ENV_VALUES = new Set(['1', 'true', 'yes', 'on']);
 const FALSE_ENV_VALUES = new Set(['0', 'false', 'no', 'off']);
 
-let cachedIncludeThoughtsEnv: string | undefined;
-let cachedIncludeThoughts = DEFAULT_INCLUDE_THOUGHTS;
-
 function parseBooleanEnv(value: string): boolean | undefined {
   const normalized = value.trim().toLowerCase();
   if (normalized.length === 0) {
@@ -170,30 +173,18 @@ function parseBooleanEnv(value: string): boolean | undefined {
   return undefined;
 }
 
-export function getDefaultIncludeThoughts(): boolean {
-  const value = process.env[GEMINI_INCLUDE_THOUGHTS_ENV_VAR];
-  if (value === cachedIncludeThoughtsEnv) {
-    return cachedIncludeThoughts;
-  }
+export const getDefaultIncludeThoughts = createCachedEnvParser(
+  GEMINI_INCLUDE_THOUGHTS_ENV_VAR,
+  parseBooleanEnv,
+  DEFAULT_INCLUDE_THOUGHTS
+);
 
-  cachedIncludeThoughtsEnv = value;
-  if (!value) {
-    cachedIncludeThoughts = DEFAULT_INCLUDE_THOUGHTS;
-    return cachedIncludeThoughts;
-  }
-
-  cachedIncludeThoughts = parseBooleanEnv(value) ?? DEFAULT_INCLUDE_THOUGHTS;
-  return cachedIncludeThoughts;
-}
-
-export function getDefaultBatchMode(): 'off' | 'inline' {
-  const value = process.env[GEMINI_BATCH_MODE_ENV_VAR]?.trim().toLowerCase();
-  if (value === 'inline') {
-    return 'inline';
-  }
-
-  return DEFAULT_BATCH_MODE;
-}
+export const getDefaultBatchMode = createCachedEnvParser<'off' | 'inline'>(
+  GEMINI_BATCH_MODE_ENV_VAR,
+  (val: string) =>
+    val.trim().toLowerCase() === 'inline' ? 'inline' : undefined,
+  DEFAULT_BATCH_MODE
+);
 
 // ---------------------------------------------------------------------------
 // Concurrency env configs

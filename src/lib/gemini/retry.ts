@@ -6,7 +6,6 @@ import {
   toRecord,
 } from '../errors.js';
 
-const DIGITS_ONLY_PATTERN = /^\d+$/;
 const RETRY_DELAY_BASE_MS = 300;
 const RETRY_DELAY_MAX_MS = 5_000;
 const RETRY_JITTER_RATIO = 0.2;
@@ -41,8 +40,20 @@ function toNumericCode(candidate: unknown): number | undefined {
     return candidate;
   }
 
-  if (typeof candidate === 'string' && DIGITS_ONLY_PATTERN.test(candidate)) {
-    return Number.parseInt(candidate, 10);
+  if (typeof candidate === 'string') {
+    const trimmed = candidate.trim();
+    if (trimmed.length === 0) return undefined;
+
+    const isNegative = trimmed.startsWith('-');
+    if (!isNegative) {
+      const firstChar = trimmed.charCodeAt(0);
+      if (firstChar < 48 || firstChar > 57) {
+        return undefined;
+      }
+    }
+
+    const parsed = Number.parseInt(trimmed, 10);
+    return Number.isFinite(parsed) ? parsed : undefined;
   }
 
   return undefined;
@@ -57,27 +68,15 @@ export function toUpperStringCode(candidate: unknown): string | undefined {
   return normalized.length > 0 ? normalized : undefined;
 }
 
-function findFirstNumericCode(
+function findFirstMatchingCode<T>(
   record: Record<string, unknown>,
-  keys: readonly string[]
-): number | undefined {
+  keys: readonly string[],
+  converter: (value: unknown) => T | undefined
+): T | undefined {
   for (const key of keys) {
-    const numericCode = toNumericCode(record[key]);
-    if (numericCode !== undefined) {
-      return numericCode;
-    }
-  }
-  return undefined;
-}
-
-function findFirstStringCode(
-  record: Record<string, unknown>,
-  keys: readonly string[]
-): string | undefined {
-  for (const key of keys) {
-    const stringCode = toUpperStringCode(record[key]);
-    if (stringCode !== undefined) {
-      return stringCode;
+    const result = converter(record[key]);
+    if (result !== undefined) {
+      return result;
     }
   }
   return undefined;
@@ -91,7 +90,7 @@ export function getNumericErrorCode(error: unknown): number | undefined {
     return undefined;
   }
 
-  return findFirstNumericCode(record, NUMERIC_ERROR_KEYS);
+  return findFirstMatchingCode(record, NUMERIC_ERROR_KEYS, toNumericCode);
 }
 
 const TRANSIENT_ERROR_KEYS = ['code', 'status', 'statusText'] as const;
@@ -102,7 +101,7 @@ function getTransientErrorCode(error: unknown): string | undefined {
     return undefined;
   }
 
-  return findFirstStringCode(record, TRANSIENT_ERROR_KEYS);
+  return findFirstMatchingCode(record, TRANSIENT_ERROR_KEYS, toUpperStringCode);
 }
 
 export function shouldRetry(error: unknown): boolean {
