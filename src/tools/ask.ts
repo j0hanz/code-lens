@@ -1,8 +1,8 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
-import { getFileContextSnapshot } from '../lib/tools.js';
 import {
   buildStructuredToolExecutionOptions,
+  getFileContextSnapshot,
   registerStructuredToolTask,
   requireToolContract,
 } from '../lib/tools.js';

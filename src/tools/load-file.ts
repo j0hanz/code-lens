@@ -10,61 +10,15 @@ import {
   storeFile,
   validateFileBudget,
 } from '../lib/file-store.js';
-import { wrapToolHandler } from '../lib/tools.js';
-import { createErrorToolResponse, createToolResponse } from '../lib/tools.js';
+import { detectLanguage } from '../lib/language-detect.js';
+import {
+  createErrorToolResponse,
+  createToolResponse,
+  VALIDATION_ERROR_META,
+  wrapToolHandler,
+} from '../lib/tools.js';
 import { LoadFileInputSchema } from '../schemas/inputs.js';
 import { DefaultOutputSchema } from '../schemas/outputs.js';
-
-const VALIDATION_META = { retryable: false, kind: 'validation' as const };
-
-const EXTENSION_LANGUAGE_MAP: ReadonlyMap<string, string> = new Map([
-  ['.ts', 'TypeScript'],
-  ['.tsx', 'TypeScript'],
-  ['.js', 'JavaScript'],
-  ['.jsx', 'JavaScript'],
-  ['.mjs', 'JavaScript'],
-  ['.cjs', 'JavaScript'],
-  ['.py', 'Python'],
-  ['.rb', 'Ruby'],
-  ['.go', 'Go'],
-  ['.rs', 'Rust'],
-  ['.java', 'Java'],
-  ['.kt', 'Kotlin'],
-  ['.cs', 'C#'],
-  ['.c', 'C'],
-  ['.cpp', 'C++'],
-  ['.h', 'C'],
-  ['.hpp', 'C++'],
-  ['.swift', 'Swift'],
-  ['.php', 'PHP'],
-  ['.sh', 'Shell'],
-  ['.bash', 'Shell'],
-  ['.zsh', 'Shell'],
-  ['.json', 'JSON'],
-  ['.yaml', 'YAML'],
-  ['.yml', 'YAML'],
-  ['.toml', 'TOML'],
-  ['.xml', 'XML'],
-  ['.html', 'HTML'],
-  ['.css', 'CSS'],
-  ['.scss', 'SCSS'],
-  ['.sql', 'SQL'],
-  ['.md', 'Markdown'],
-  ['.lua', 'Lua'],
-  ['.r', 'R'],
-  ['.dart', 'Dart'],
-  ['.ex', 'Elixir'],
-  ['.exs', 'Elixir'],
-  ['.erl', 'Erlang'],
-  ['.zig', 'Zig'],
-  ['.vue', 'Vue'],
-  ['.svelte', 'Svelte'],
-]);
-
-function detectLanguage(filePath: string): string {
-  const ext = path.extname(filePath).toLowerCase();
-  return EXTENSION_LANGUAGE_MAP.get(ext) ?? 'Unknown';
-}
 
 const DENIED_SEGMENTS = new Set(['.env', '.git', 'node_modules']);
 
@@ -131,7 +85,7 @@ export function registerLoadFileTool(server: McpServer): void {
             'E_LOAD_FILE',
             pathError,
             undefined,
-            VALIDATION_META
+            VALIDATION_ERROR_META
           );
         }
 
@@ -145,7 +99,7 @@ export function registerLoadFileTool(server: McpServer): void {
             'E_LOAD_FILE',
             `File not found or not accessible: ${resolved}`,
             undefined,
-            VALIDATION_META
+            VALIDATION_ERROR_META
           );
         }
 
@@ -154,7 +108,7 @@ export function registerLoadFileTool(server: McpServer): void {
             'E_LOAD_FILE',
             'Path is not a regular file.',
             undefined,
-            VALIDATION_META
+            VALIDATION_ERROR_META
           );
         }
 

@@ -1,9 +1,9 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
 import { buildLanguageDiffPrompt } from '../lib/format.js';
-import { getDiffContextSnapshot } from '../lib/tools.js';
 import {
   buildStructuredToolExecutionOptions,
+  getDiffContextSnapshot,
   registerStructuredToolTask,
   requireToolContract,
 } from '../lib/tools.js';

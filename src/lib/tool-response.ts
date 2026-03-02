@@ -133,3 +133,9 @@ export function createErrorToolResponse(
     isError: true,
   };
 }
+
+/** Shared meta for non-retryable validation errors across tools. */
+export const VALIDATION_ERROR_META: ErrorMeta = {
+  retryable: false,
+  kind: 'validation',
+};

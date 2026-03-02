@@ -13,11 +13,17 @@ import {
 } from '../src/schemas/inputs.js';
 import {
   AnalyzeComplexityResultSchema,
+  AskGeminiResultSchema,
+  AskResultSchema,
   DefaultOutputSchema,
   DetectApiBreakingResultSchema,
   PrImpactResultSchema,
+  RefactorCodeGeminiResultSchema,
+  RefactorCodeResultSchema,
   ReviewSummaryResultSchema,
   TestPlanResultSchema,
+  VerifyLogicGeminiResultSchema,
+  VerifyLogicResultSchema,
 } from '../src/schemas/outputs.js';
 
 describe('input schemas', () => {
@@ -271,6 +277,119 @@ describe('z.toJSONSchema integration', () => {
       const jsonSchema = z.toJSONSchema(schema, { target: 'draft-2020-12' });
       assert.equal(typeof jsonSchema, 'object');
       assert.ok(jsonSchema !== null);
+    }
+  });
+});
+
+describe('geminiSchema vs resultSchema parse-path', () => {
+  const minimalRefactorGeminiResult = {
+    summary: 'No refactoring needed.',
+    suggestions: [],
+  };
+
+  const minimalAskGeminiResult = {
+    answer: 'The file exports a single function.',
+    codeReferences: [],
+    confidence: 'high',
+  };
+
+  const minimalVerifyLogicGeminiResult = {
+    answer: 'Logic is correct.',
+    verified: true,
+    codeBlocks: [],
+    executionResults: [],
+  };
+
+  it('RefactorCodeGeminiResultSchema parses without filePath (what Gemini produces)', () => {
+    const result = RefactorCodeGeminiResultSchema.safeParse(
+      minimalRefactorGeminiResult
+    );
+    assert.equal(result.success, true);
+  });
+
+  it('RefactorCodeResultSchema rejects without filePath (needs transformResult)', () => {
+    const result = RefactorCodeResultSchema.safeParse(
+      minimalRefactorGeminiResult
+    );
+    assert.equal(result.success, false);
+  });
+
+  it('RefactorCodeResultSchema accepts full result with filePath and counts', () => {
+    const result = RefactorCodeResultSchema.safeParse({
+      ...minimalRefactorGeminiResult,
+      filePath: 'src/server.ts',
+      language: 'TypeScript',
+      namingIssuesCount: 0,
+      complexityIssuesCount: 0,
+      duplicationIssuesCount: 0,
+      groupingIssuesCount: 0,
+    });
+    assert.equal(result.success, true);
+  });
+
+  it('AskGeminiResultSchema parses without filePath', () => {
+    const result = AskGeminiResultSchema.safeParse(minimalAskGeminiResult);
+    assert.equal(result.success, true);
+  });
+
+  it('AskResultSchema rejects without filePath', () => {
+    const result = AskResultSchema.safeParse(minimalAskGeminiResult);
+    assert.equal(result.success, false);
+  });
+
+  it('VerifyLogicGeminiResultSchema parses without filePath', () => {
+    const result = VerifyLogicGeminiResultSchema.safeParse(
+      minimalVerifyLogicGeminiResult
+    );
+    assert.equal(result.success, true);
+  });
+
+  it('VerifyLogicResultSchema rejects without filePath', () => {
+    const result = VerifyLogicResultSchema.safeParse(
+      minimalVerifyLogicGeminiResult
+    );
+    assert.equal(result.success, false);
+  });
+
+  it('geminiSchema JSON schema omits fields that resultSchema requires (regression)', () => {
+    // Ensures the parse-path fix in executeModelCallAttempt stays relevant:
+    // if geminiSchema and resultSchema ever become identical, the fix is no
+    // longer needed and something likely changed unintentionally.
+    const geminiSchemas = [
+      { name: 'RefactorCode', schema: RefactorCodeGeminiResultSchema },
+      { name: 'Ask', schema: AskGeminiResultSchema },
+      { name: 'VerifyLogic', schema: VerifyLogicGeminiResultSchema },
+    ];
+    const resultSchemas = [
+      { name: 'RefactorCode', schema: RefactorCodeResultSchema },
+      { name: 'Ask', schema: AskResultSchema },
+      { name: 'VerifyLogic', schema: VerifyLogicResultSchema },
+    ];
+
+    for (let i = 0; i < geminiSchemas.length; i++) {
+      const geminiJs = z.toJSONSchema(geminiSchemas[i]!.schema, {
+        target: 'draft-2020-12',
+      }) as { properties?: Record<string, unknown> };
+      const resultJs = z.toJSONSchema(resultSchemas[i]!.schema, {
+        target: 'draft-2020-12',
+      }) as { properties?: Record<string, unknown> };
+
+      const geminiKeys = new Set(Object.keys(geminiJs.properties ?? {}));
+      const resultKeys = new Set(Object.keys(resultJs.properties ?? {}));
+
+      // resultSchema must have strictly more properties than geminiSchema
+      assert.ok(
+        resultKeys.size > geminiKeys.size,
+        `${resultSchemas[i]!.name}: resultSchema should have more properties than geminiSchema`
+      );
+
+      // Every geminiSchema key must exist in resultSchema
+      for (const key of geminiKeys) {
+        assert.ok(
+          resultKeys.has(key),
+          `${geminiSchemas[i]!.name}: geminiSchema key "${key}" missing from resultSchema`
+        );
+      }
     }
   });
 });

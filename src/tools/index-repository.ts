@@ -10,8 +10,15 @@ import {
   setCurrentSearchStore,
   uploadToSearchStore,
 } from '../lib/gemini/index.js';
-import { createErrorToolResponse, createToolResponse } from '../lib/tools.js';
-import { wrapToolHandler } from '../lib/tools.js';
+import { EXTENSION_LANGUAGE_MAP } from '../lib/language-detect.js';
+import type { ProgressExtra } from '../lib/progress.js';
+import { getOrCreateProgressReporter } from '../lib/progress.js';
+import {
+  createErrorToolResponse,
+  createToolResponse,
+  VALIDATION_ERROR_META,
+  wrapToolHandler,
+} from '../lib/tools.js';
 import { IndexRepositoryInputSchema } from '../schemas/inputs.js';
 import { DefaultOutputSchema } from '../schemas/outputs.js';
 
@@ -22,47 +29,8 @@ import { DefaultOutputSchema } from '../schemas/outputs.js';
 const MAX_FILE_BYTES = 1_048_576; // 1 MB
 const MAX_FILES = 500;
 
-const ALLOWED_EXTENSIONS = new Set([
-  '.ts',
-  '.tsx',
-  '.js',
-  '.jsx',
-  '.mjs',
-  '.cjs',
-  '.py',
-  '.rb',
-  '.go',
-  '.rs',
-  '.java',
-  '.kt',
-  '.cs',
-  '.c',
-  '.cpp',
-  '.h',
-  '.hpp',
-  '.swift',
-  '.php',
-  '.sh',
-  '.bash',
-  '.json',
-  '.yaml',
-  '.yml',
-  '.toml',
-  '.xml',
-  '.html',
-  '.css',
-  '.scss',
-  '.sql',
-  '.md',
-  '.lua',
-  '.r',
-  '.dart',
-  '.ex',
-  '.exs',
-  '.erl',
-  '.zig',
-  '.vue',
-  '.svelte',
+/** Extensions beyond the language map that should also be indexed. */
+const EXTRA_INDEXABLE_EXTENSIONS = [
   '.txt',
   '.cfg',
   '.ini',
@@ -71,6 +39,11 @@ const ALLOWED_EXTENSIONS = new Set([
   '.tf',
   '.graphql',
   '.proto',
+] as const;
+
+const ALLOWED_EXTENSIONS: ReadonlySet<string> = new Set([
+  ...EXTENSION_LANGUAGE_MAP.keys(),
+  ...EXTRA_INDEXABLE_EXTENSIONS,
 ]);
 
 const DENIED_SEGMENTS = new Set([
@@ -96,8 +69,6 @@ const EXTENSION_MIME_MAP: ReadonlyMap<string, string> = new Map([
   ['.yaml', 'text/yaml'],
   ['.yml', 'text/yaml'],
 ]);
-
-const VALIDATION_META = { retryable: false, kind: 'validation' as const };
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -207,7 +178,7 @@ export function registerIndexRepositoryTool(server: McpServer): void {
         progressContext: (input) =>
           input.displayName ?? path.basename(input.rootPath),
       },
-      async (input) => {
+      async (input, extra: ProgressExtra) => {
         const parsed = IndexRepositoryInputSchema.parse(input);
         const rootPath = path.resolve(parsed.rootPath);
 
@@ -217,7 +188,7 @@ export function registerIndexRepositoryTool(server: McpServer): void {
             'E_INDEX_REPO',
             pathError,
             undefined,
-            VALIDATION_META
+            VALIDATION_ERROR_META
           );
         }
 
@@ -230,7 +201,7 @@ export function registerIndexRepositoryTool(server: McpServer): void {
             'E_INDEX_REPO',
             `Directory not found: ${rootPath}`,
             undefined,
-            VALIDATION_META
+            VALIDATION_ERROR_META
           );
         }
         if (!rootStat.isDirectory()) {
@@ -238,7 +209,7 @@ export function registerIndexRepositoryTool(server: McpServer): void {
             'E_INDEX_REPO',
             'Path is not a directory.',
             undefined,
-            VALIDATION_META
+            VALIDATION_ERROR_META
           );
         }
 
@@ -251,7 +222,7 @@ export function registerIndexRepositoryTool(server: McpServer): void {
             'E_INDEX_REPO',
             'No indexable source files found in directory.',
             undefined,
-            VALIDATION_META
+            VALIDATION_ERROR_META
           );
         }
 
@@ -274,12 +245,15 @@ export function registerIndexRepositoryTool(server: McpServer): void {
         let uploaded = 0;
         let skipped = 0;
 
-        for (const file of files) {
+        // Upload files with bounded concurrency to avoid sequential bottleneck
+        const UPLOAD_CONCURRENCY = 10;
+
+        const uploadOne = async (file: CollectedFile): Promise<void> => {
           try {
             const fileStat = await stat(file.absolutePath);
             if (fileStat.size > MAX_FILE_BYTES) {
               skipped += 1;
-              continue;
+              return;
             }
 
             const content = await readFile(file.absolutePath, 'utf8');
@@ -299,6 +273,31 @@ export function registerIndexRepositoryTool(server: McpServer): void {
           } catch {
             skipped += 1;
           }
+        };
+
+        // Simple pool: process files in chunks of UPLOAD_CONCURRENCY
+        const reportProgress = getOrCreateProgressReporter(extra);
+        const totalFiles = files.length;
+
+        for (let i = 0; i < files.length; i += UPLOAD_CONCURRENCY) {
+          if (extra.signal?.aborted) {
+            return createErrorToolResponse(
+              'E_INDEX_REPO',
+              'Indexing cancelled by client.',
+              undefined,
+              { retryable: false, kind: 'cancelled' }
+            );
+          }
+
+          const chunk = files.slice(i, i + UPLOAD_CONCURRENCY);
+          await Promise.all(chunk.map(uploadOne));
+
+          const processed = Math.min(i + UPLOAD_CONCURRENCY, totalFiles);
+          await reportProgress({
+            current: processed,
+            total: totalFiles,
+            message: `Uploaded ${String(uploaded)}/${String(totalFiles)} files (${String(skipped)} skipped)`,
+          });
         }
 
         // Swap reference: new store becomes active before old is deleted

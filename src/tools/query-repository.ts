@@ -9,6 +9,7 @@ import {
   createErrorToolResponse,
   registerStructuredToolTask,
   requireToolContract,
+  VALIDATION_ERROR_META,
 } from '../lib/tools.js';
 import { QueryRepositoryInputSchema } from '../schemas/inputs.js';
 import type { QueryRepositoryInput } from '../schemas/inputs.js';
@@ -28,9 +29,41 @@ interface FileSearchResult {
   title?: string;
 }
 
-interface FileSearchResultContent {
+interface FileSearchResultPart {
   type: 'file_search_result';
   result?: FileSearchResult[];
+}
+
+interface TextPart {
+  text: string;
+  thought?: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// Type guards
+// ---------------------------------------------------------------------------
+
+function isObjectWithType(
+  part: unknown
+): part is Record<string, unknown> & { type: string } {
+  return (
+    typeof part === 'object' &&
+    part !== null &&
+    typeof (part as Record<string, unknown>).type === 'string'
+  );
+}
+
+function isFileSearchResultPart(part: unknown): part is FileSearchResultPart {
+  return isObjectWithType(part) && part.type === 'file_search_result';
+}
+
+function isTextPart(part: unknown): part is TextPart {
+  return (
+    typeof part === 'object' &&
+    part !== null &&
+    'text' in part &&
+    typeof (part as Record<string, unknown>).text === 'string'
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -41,21 +74,13 @@ function extractSources(parts: unknown[]): QueryRepositorySource[] {
   const sources: QueryRepositorySource[] = [];
 
   for (const part of parts) {
-    if (
-      typeof part === 'object' &&
-      part !== null &&
-      'type' in part &&
-      (part as { type: string }).type === 'file_search_result'
-    ) {
-      const fsr = part as FileSearchResultContent;
-      if (Array.isArray(fsr.result)) {
-        for (const r of fsr.result) {
-          sources.push({
-            fileSearchStore: r.file_search_store,
-            title: r.title,
-            text: r.text?.slice(0, 2000),
-          });
-        }
+    if (isFileSearchResultPart(part) && Array.isArray(part.result)) {
+      for (const r of part.result) {
+        sources.push({
+          fileSearchStore: r.file_search_store,
+          title: r.title,
+          text: r.text?.slice(0, 2000),
+        });
       }
     }
   }
@@ -67,21 +92,13 @@ function extractTextFromParts(parts: unknown[]): string {
   const textSegments: string[] = [];
 
   for (const part of parts) {
-    if (
-      typeof part === 'object' &&
-      part !== null &&
-      'text' in part &&
-      typeof (part as { text: unknown }).text === 'string' &&
-      !(part as { thought?: unknown }).thought
-    ) {
-      textSegments.push((part as { text: string }).text);
+    if (isTextPart(part) && !part.thought) {
+      textSegments.push(part.text);
     }
   }
 
   return textSegments.join('\n\n');
 }
-
-const VALIDATION_META = { retryable: false, kind: 'validation' as const };
 
 const SYSTEM_INSTRUCTION = `You are a code analysis assistant. Answer questions about the repository using the retrieved source file contents. Be precise, cite file names when possible, and stay factual.`;
 
@@ -132,7 +149,7 @@ export function registerQueryRepositoryTool(server: McpServer): void {
               'E_QUERY_REPO',
               'No repository indexed. Call index_repository first.',
               undefined,
-              VALIDATION_META
+              VALIDATION_ERROR_META
             )
           );
         }

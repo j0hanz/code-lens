@@ -2,9 +2,9 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
 import { computeDiffStatsAndPathsFromFiles } from '../lib/diff.js';
 import { formatOptionalLines } from '../lib/format.js';
-import { getDiffContextSnapshot } from '../lib/tools.js';
 import {
   buildStructuredToolExecutionOptions,
+  getDiffContextSnapshot,
   registerStructuredToolTask,
   requireToolContract,
 } from '../lib/tools.js';

@@ -151,11 +151,20 @@ export interface StructuredToolTaskConfig<
   /** Zod schema for validating the complete tool input inside the handler. */
   fullInputSchema: z.ZodType<TInput>;
 
-  /** Zod schema for parsing and validating the Gemini structured response. */
+  /**
+   * Zod schema for the final structured result after any transformResult.
+   * When geminiSchema is also provided, this is only used for outputSchema
+   * derivation — the actual Gemini response is parsed against geminiSchema.
+   */
   resultSchema: z.ZodType<TResult>;
 
-  /** Optional Zod schema used specifically for Gemini response validation. */
-  geminiSchema?: z.ZodType;
+  /**
+   * Optional Zod schema for parsing and validating the raw Gemini response.
+   * When set, Gemini is instructed to produce this shape and the response is
+   * parsed against it (instead of resultSchema). The transformResult hook
+   * then extends the parsed result into the final TFinal shape.
+   */
+  geminiSchema?: z.ZodType<TResult>;
 
   /** Stable error code returned on failure (e.g. 'E_INSPECT_QUALITY'). */
   errorCode: string;
@@ -609,7 +618,8 @@ export class ToolExecutionRunner<
       );
     }
 
-    return this.config.resultSchema.parse(raw);
+    const parseSchema = this.config.geminiSchema ?? this.config.resultSchema;
+    return parseSchema.parse(raw);
   }
 
   private async executeModelCall(
