@@ -74,8 +74,26 @@ export const DetectApiBreakingInputSchema = z.strictObject({
   language: LanguageSchema,
 });
 
+const WEB_SEARCH_RESPONSE_STYLES = [
+  'concise',
+  'detailed',
+  'bullets',
+  'code_focused',
+] as const;
+
 export const WebSearchInputSchema = z.strictObject({
-  query: z.string().min(1).max(1000).describe('Search query'),
+  query: z.string().min(1).max(1000).describe('Search query.'),
+  topic: createOptionalBoundedString(
+    2,
+    100,
+    'Domain focus (e.g. "TypeScript", "Docker"). Set to avoid irrelevant results.'
+  ),
+  responseStyle: z
+    .enum(WEB_SEARCH_RESPONSE_STYLES)
+    .default('concise')
+    .describe(
+      'concise: 2-4 sentences. detailed: full explanation. bullets: list. code_focused: code snippets.'
+    ),
 });
 
 export const LoadFileInputSchema = z.strictObject({

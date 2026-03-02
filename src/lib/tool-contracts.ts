@@ -180,6 +180,22 @@ const QUERY_PARAM = createParam(
   'Search query.'
 );
 
+const TOPIC_PARAM = createParam(
+  'topic',
+  'string',
+  false,
+  '2-100 chars',
+  'Domain focus. Set to avoid irrelevant results.'
+);
+
+const RESPONSE_STYLE_PARAM = createParam(
+  'responseStyle',
+  'string',
+  false,
+  "'concise' | 'detailed' | 'bullets' | 'code_focused'",
+  'Output format. Default: concise (2-4 sentences).'
+);
+
 const QUERY_REPO_PARAM = createParam(
   'query',
   'string',
@@ -407,15 +423,16 @@ export const TOOL_CONTRACTS = [
   {
     name: 'web_search',
     purpose:
-      'Perform a Google Search with Grounding to get up-to-date information.',
+      'Google Search with Grounding. Set topic to scope results; responseStyle controls output length.',
     model: FLASH_MODEL,
     timeoutMs: DEFAULT_TIMEOUT_FLASH_MS,
     maxOutputTokens: 0,
-    params: cloneParams(QUERY_PARAM),
+    params: cloneParams(QUERY_PARAM, TOPIC_PARAM, RESPONSE_STYLE_PARAM),
     outputShape: '{ok, result: {text, groundingMetadata}}',
     gotchas: [
       'Uses Gemini grounding — results depend on Google Search availability.',
       'No diff or file prerequisite.',
+      'Set topic to avoid irrelevant results for ambiguous queries.',
     ],
     crossToolFlow: [
       'Standalone tool for fetching up-to-date information from the web.',

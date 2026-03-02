@@ -6,7 +6,10 @@ import {
   registerStructuredToolTask,
   requireToolContract,
 } from '../lib/tools.js';
-import { WebSearchInputSchema } from '../schemas/inputs.js';
+import {
+  type WebSearchInput,
+  WebSearchInputSchema,
+} from '../schemas/inputs.js';
 import { WebSearchResultSchema } from '../schemas/outputs.js';
 import type { WebSearchResult } from '../schemas/outputs.js';
 
@@ -82,12 +85,35 @@ function formatGroundedResponse(
 
 const TOOL_CONTRACT = requireToolContract('web_search');
 
+const STYLE_DIRECTIVES = {
+  concise: 'Return 2-4 sentences. No filler.',
+  detailed: 'Return thorough answer with context. Use paragraphs.',
+  bullets: 'Return bullet list. One fact per bullet. No prose.',
+  code_focused:
+    'Return code snippets in fenced blocks with language tags. Minimize prose.',
+} as const satisfies Record<string, string>;
+
+function buildSystemInstruction(input: WebSearchInput): string {
+  const parts: string[] = [
+    'Task: Answer the query using search results. Cite sources inline.',
+    'Rules: Factual only. No speculation. No filler.',
+  ];
+
+  if (input.topic) {
+    parts.push(`Scope: ${input.topic}. Discard results outside this domain.`);
+  }
+
+  parts.push(`Format: ${STYLE_DIRECTIVES[input.responseStyle]}`);
+
+  return parts.join('\n');
+}
+
 export function registerWebSearchTool(server: McpServer): void {
   registerStructuredToolTask(server, {
     name: 'web_search',
     title: 'Web Search',
     description:
-      'Perform a Google Search with Grounding to get up-to-date information.',
+      'Google Search with Grounding. Set topic to scope results; responseStyle controls output length.',
     inputSchema: WebSearchInputSchema,
     fullInputSchema: WebSearchInputSchema,
     resultSchema: WebSearchResultSchema,
@@ -102,13 +128,13 @@ export function registerWebSearchTool(server: McpServer): void {
     progressContext: (input) => input.query.slice(0, 60),
     formatOutput: (result) => result.text.slice(0, 200),
     buildPrompt: (input) => ({
-      systemInstruction:
-        'You are a technical research assistant. Return factual, concise answers grounded in search results. Cite sources when available.',
-      prompt: input.query,
+      systemInstruction: buildSystemInstruction(input),
+      prompt: input.topic ? `[${input.topic}] ${input.query}` : input.query,
     }),
     customGenerate: async (_promptParts, _ctx, opts) => {
       const result = await generateGroundedContent({
         prompt: _promptParts.prompt,
+        systemInstruction: _promptParts.systemInstruction,
         responseSchema: {},
         ...(opts.signal ? { signal: opts.signal } : {}),
         onLog: opts.onLog,
