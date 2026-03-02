@@ -2,7 +2,7 @@ import { performance } from 'node:perf_hooks';
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
-import { createCachedEnvInt } from './config.js';
+import { createCachedEnvInt, startCleanupTimer } from './config.js';
 import { formatUsNumber } from './format.js';
 import { createErrorToolResponse, type ErrorMeta } from './tools.js';
 
@@ -80,6 +80,15 @@ function notifyFileUpdated(): void {
 /** Binds file resource notifications to the currently active server instance. */
 export function initFileStore(server: McpServer): void {
   sendResourceUpdated = (params) => server.server.sendResourceUpdated(params);
+
+  startCleanupTimer(() => {
+    if (
+      currentSlot &&
+      performance.now() - currentSlot.cachedAt > fileCacheTtlMs.get()
+    ) {
+      currentSlot = undefined;
+    }
+  });
 }
 
 export function storeFile(slot: FileSlot): void {

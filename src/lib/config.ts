@@ -40,6 +40,15 @@ export function createCachedEnvInt(
     },
   };
 }
+/** Interval for background cache cleanup sweeps (10 minutes). */
+export const CLEANUP_INTERVAL_MS = 10 * 60 * 1_000;
+
+/** Starts a non-blocking interval that runs {@link callback} every {@link CLEANUP_INTERVAL_MS}. */
+export function startCleanupTimer(callback: () => void): void {
+  const timer = setInterval(callback, CLEANUP_INTERVAL_MS);
+  timer.unref();
+}
+
 /** Fast, cost-effective model for summarization and light analysis. */
 export const FLASH_MODEL = 'gemini-3-flash-preview';
 

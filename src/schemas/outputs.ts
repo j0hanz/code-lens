@@ -48,25 +48,38 @@ const mergeRiskSchema = z
   .enum(MERGE_RISK_LEVELS)
   .describe('High-level merge risk.');
 
+const ErrorPayloadSchema = z
+  .strictObject({
+    code: z.string().describe('Stable error code for callers.'),
+    message: z.string().describe('Human readable error details.'),
+    retryable: z
+      .boolean()
+      .optional()
+      .describe('Whether the client should retry this request.'),
+    kind: z
+      .enum(ERROR_KINDS)
+      .optional()
+      .describe('Machine-readable error category.'),
+  })
+  .describe('Error payload when ok is false.');
+
 export const DefaultOutputSchema = z.strictObject({
   ok: z.boolean().describe('Whether the tool completed successfully.'),
   result: z.unknown().optional().describe('Successful result payload.'),
-  error: z
-    .strictObject({
-      code: z.string().describe('Stable error code for callers.'),
-      message: z.string().describe('Human readable error details.'),
-      retryable: z
-        .boolean()
-        .optional()
-        .describe('Whether the client should retry this request.'),
-      kind: z
-        .enum(ERROR_KINDS)
-        .optional()
-        .describe('Machine-readable error category.'),
-    })
-    .optional()
-    .describe('Error payload when ok is false.'),
+  error: ErrorPayloadSchema.optional(),
 });
+
+/**
+ * Create a typed outputSchema for an MCP tool by wrapping its resultSchema
+ * in the standard ok/error envelope.
+ */
+export function createToolOutputSchema(resultSchema: z.ZodType): z.ZodType {
+  return z.strictObject({
+    ok: z.boolean().describe('Whether the tool completed successfully.'),
+    result: resultSchema.optional().describe('Successful result payload.'),
+    error: ErrorPayloadSchema.optional(),
+  });
+}
 
 export const PrImpactResultSchema = z.strictObject({
   severity: z.enum(QUALITY_RISK_LEVELS).describe('Overall severity.'),
@@ -108,7 +121,7 @@ export const PrImpactResultSchema = z.strictObject({
     .describe('Revert difficulty.'),
 });
 
-export const ReviewSummaryResultSchema = z.strictObject({
+export const ReviewSummaryGeminiResultSchema = z.strictObject({
   summary: createReviewSummarySchema('PR summary.'),
   overallRisk: mergeRiskSchema,
   keyChanges: createBoundedStringArray(
@@ -119,14 +132,19 @@ export const ReviewSummaryResultSchema = z.strictObject({
     'Key changes (significance desc).'
   ),
   recommendation: z.string().min(1).max(500).describe('Merge recommendation.'),
-  stats: z
-    .strictObject({
-      filesChanged: z.int().min(0).describe('Files changed.'),
-      linesAdded: z.int().min(0).describe('Lines added.'),
-      linesRemoved: z.int().min(0).describe('Lines removed.'),
-    })
-    .describe('Change statistics (computed from diff before Gemini call).'),
 });
+
+export const ReviewSummaryResultSchema = ReviewSummaryGeminiResultSchema.extend(
+  {
+    stats: z
+      .strictObject({
+        filesChanged: z.int().min(0).describe('Files changed.'),
+        linesAdded: z.int().min(0).describe('Lines added.'),
+        linesRemoved: z.int().min(0).describe('Lines removed.'),
+      })
+      .describe('Change statistics (computed from diff before Gemini call).'),
+  }
+);
 
 export const TestCaseSchema = z.strictObject({
   name: z.string().min(1).max(200).describe('Test case name.'),
@@ -269,6 +287,9 @@ export const RefactorCodeResultSchema = RefactorCodeGeminiResultSchema.extend({
 
 export type DefaultOutput = z.infer<typeof DefaultOutputSchema>;
 export type PrImpactResult = z.infer<typeof PrImpactResultSchema>;
+export type ReviewSummaryGeminiResult = z.infer<
+  typeof ReviewSummaryGeminiResultSchema
+>;
 export type ReviewSummaryResult = z.infer<typeof ReviewSummaryResultSchema>;
 export type TestCase = z.infer<typeof TestCaseSchema>;
 export type TestPlanResult = z.infer<typeof TestPlanResultSchema>;
@@ -503,3 +524,34 @@ export const WebSearchResultSchema = z.strictObject({
 });
 
 export type WebSearchResult = z.infer<typeof WebSearchResultSchema>;
+
+// ---------------------------------------------------------------------------
+// Sync tool result schemas (generate_diff, load_file)
+// ---------------------------------------------------------------------------
+
+export const GenerateDiffResultSchema = z.strictObject({
+  diffRef: z.string().describe('URI to the cached diff resource.'),
+  stats: z
+    .strictObject({
+      files: z.int().min(0).describe('Number of files changed.'),
+      added: z.int().min(0).describe('Lines added.'),
+      deleted: z.int().min(0).describe('Lines deleted.'),
+    })
+    .describe('Diff statistics.'),
+  generatedAt: z.string().describe('ISO 8601 timestamp.'),
+  mode: z.enum(['unstaged', 'staged']).describe('Diff mode used.'),
+  message: z.string().describe('Human-readable summary.'),
+});
+
+export const LoadFileResultSchema = z.strictObject({
+  fileRef: z.string().describe('URI to the cached file resource.'),
+  filePath: z.string().describe('Resolved absolute file path.'),
+  language: z.string().describe('Detected programming language.'),
+  lineCount: z.int().min(0).describe('Number of lines.'),
+  sizeChars: z.int().min(0).describe('Character count.'),
+  cachedAt: z.number().describe('Performance timestamp of caching.'),
+  message: z.string().describe('Human-readable summary.'),
+});
+
+export type GenerateDiffResult = z.infer<typeof GenerateDiffResultSchema>;
+export type LoadFileResult = z.infer<typeof LoadFileResultSchema>;

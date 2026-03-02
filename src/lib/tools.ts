@@ -11,7 +11,7 @@ import type {
 } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 
-import { DefaultOutputSchema } from '../schemas/outputs.js';
+import { createToolOutputSchema } from '../schemas/outputs.js';
 
 import { createCachedEnvInt } from './config.js';
 import {
@@ -916,13 +916,15 @@ export function registerStructuredToolTask<
       });
   responseSchemaCache.set(config, responseSchema);
 
+  const outputSchema = createToolOutputSchema(config.resultSchema);
+
   server.experimental.tasks.registerToolTask(
     config.name,
     {
       title: config.title,
       description: config.description,
       inputSchema: config.inputSchema,
-      outputSchema: DefaultOutputSchema,
+      outputSchema,
       annotations: buildToolAnnotations(config.annotations),
       execution: {
         taskSupport: 'optional',

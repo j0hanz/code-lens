@@ -3,7 +3,6 @@ import path from 'node:path';
 import { performance } from 'node:perf_hooks';
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { z } from 'zod';
 
 import {
   SOURCE_RESOURCE_URI,
@@ -18,14 +17,22 @@ import {
   wrapToolHandler,
 } from '../lib/tools.js';
 import { LoadFileInputSchema } from '../schemas/inputs.js';
-import { DefaultOutputSchema } from '../schemas/outputs.js';
+import {
+  createToolOutputSchema,
+  LoadFileResultSchema,
+} from '../schemas/outputs.js';
 
-const DENIED_SEGMENTS = new Set(['.env', '.git', 'node_modules']);
+const DENIED_SEGMENTS = new Set(['.git', 'node_modules']);
 
 function isDeniedPath(resolved: string): boolean {
   return resolved
     .split(path.sep)
-    .some((segment) => DENIED_SEGMENTS.has(segment));
+    .some(
+      (segment) =>
+        DENIED_SEGMENTS.has(segment) ||
+        segment === '.env' ||
+        segment.startsWith('.env.')
+    );
 }
 
 function validateFilePath(
@@ -55,16 +62,8 @@ export function registerLoadFileTool(server: McpServer): void {
       title: 'Load File',
       description:
         'Cache a single file for analysis tools (refactor_code, ask_about_code, verify_logic). Overwrites previous cache. Path is relative to server working directory (e.g. src/index.ts) or absolute (e.g. /home/user/project/src/index.ts).',
-      inputSchema: z.strictObject({
-        filePath: z
-          .string()
-          .min(1)
-          .max(500)
-          .describe(
-            'File path relative to workspace root (e.g. src/index.ts, lib/utils.ts) or absolute. Must be within workspace. No .env, .git/, node_modules/.'
-          ),
-      }),
-      outputSchema: DefaultOutputSchema,
+      inputSchema: LoadFileInputSchema,
+      outputSchema: createToolOutputSchema(LoadFileResultSchema),
       annotations: {
         readOnlyHint: false,
         idempotentHint: true,

@@ -11,11 +11,11 @@ import {
   type GenerateReviewSummaryInput,
   GenerateReviewSummaryInputSchema,
 } from '../schemas/inputs.js';
-import { ReviewSummaryResultSchema } from '../schemas/outputs.js';
+import {
+  ReviewSummaryGeminiResultSchema,
+  ReviewSummaryResultSchema,
+} from '../schemas/outputs.js';
 
-const ReviewSummaryModelSchema = ReviewSummaryResultSchema.omit({
-  stats: true,
-});
 const TOOL_CONTRACT = requireToolContract('generate_review_summary');
 const SYSTEM_INSTRUCTION = `
 <role>
@@ -44,7 +44,8 @@ export function registerGenerateReviewSummaryTool(server: McpServer): void {
       'Summarize diff and risk level. Prerequisite: generate_diff. Auto-infer repo/language.',
     inputSchema: GenerateReviewSummaryInputSchema,
     fullInputSchema: GenerateReviewSummaryInputSchema,
-    resultSchema: ReviewSummaryModelSchema,
+    resultSchema: ReviewSummaryResultSchema,
+    geminiSchema: ReviewSummaryGeminiResultSchema,
     errorCode: 'E_REVIEW_SUMMARY',
     ...buildStructuredToolExecutionOptions(TOOL_CONTRACT),
     requiresDiff: true,

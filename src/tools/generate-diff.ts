@@ -18,7 +18,10 @@ import {
   createToolResponse,
   wrapToolHandler,
 } from '../lib/tools.js';
-import { DefaultOutputSchema } from '../schemas/outputs.js';
+import {
+  createToolOutputSchema,
+  GenerateDiffResultSchema,
+} from '../schemas/outputs.js';
 
 const GIT_TIMEOUT_MS = 30_000;
 const GIT_MAX_BUFFER = 10 * 1024 * 1024; // 10 MB
@@ -50,7 +53,11 @@ async function findGitRoot(cwd: string = process.cwd()): Promise<string> {
 
 function cacheGitRoot(cwd: string, gitRoot: string): void {
   if (gitRootByCwd.size >= MAX_GIT_ROOT_CACHE_SIZE) {
-    gitRootByCwd.clear();
+    // LRU-style eviction: remove the oldest entry instead of clearing all.
+    const oldestKey = gitRootByCwd.keys().next().value;
+    if (oldestKey !== undefined) {
+      gitRootByCwd.delete(oldestKey);
+    }
   }
   gitRootByCwd.set(cwd, gitRoot);
 }
@@ -207,9 +214,9 @@ export function registerGenerateDiffTool(server: McpServer): void {
             '"unstaged": working-tree changes not yet staged. "staged": changes added to the index with git add.'
           ),
       }),
-      outputSchema: DefaultOutputSchema,
+      outputSchema: createToolOutputSchema(GenerateDiffResultSchema),
       annotations: {
-        readOnlyHint: false,
+        readOnlyHint: true,
         idempotentHint: true,
         openWorldHint: false,
         destructiveHint: false,

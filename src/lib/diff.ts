@@ -2,7 +2,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import parseDiff from 'parse-diff';
 import type { File as ParsedFile } from 'parse-diff';
 
-import { createCachedEnvInt } from './config.js';
+import { createCachedEnvInt, startCleanupTimer } from './config.js';
 import { formatUsNumber } from './format.js';
 import {
   clearDiffCacheLocal,
@@ -321,6 +321,16 @@ function notifyDiffUpdated(): void {
 /** Binds diff resource notifications to the currently active server instance. */
 export function initDiffStore(server: McpServer): void {
   sendResourceUpdated = (params) => server.server.sendResourceUpdated(params);
+
+  startCleanupTimer(() => {
+    const ttl = diffCacheTtlMs.get();
+    const now = Date.now();
+    for (const [key, slot] of diffSlots) {
+      if (now - slot.generatedAtMs > ttl) {
+        diffSlots.delete(key);
+      }
+    }
+  });
 }
 
 export function storeDiff(data: DiffSlot, key: string = process.cwd()): void {

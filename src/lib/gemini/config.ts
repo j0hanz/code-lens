@@ -37,7 +37,7 @@ export { UNKNOWN_REQUEST_CONTEXT_VALUE_STR as UNKNOWN_REQUEST_CONTEXT_VALUE };
 // ---------------------------------------------------------------------------
 
 const GEMINI_HARM_BLOCK_THRESHOLD_ENV_VAR = 'GEMINI_HARM_BLOCK_THRESHOLD';
-const DEFAULT_SAFETY_THRESHOLD = HarmBlockThreshold.BLOCK_NONE;
+const DEFAULT_SAFETY_THRESHOLD = HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE;
 
 const SAFETY_CATEGORIES = [
   HarmCategory.HARM_CATEGORY_HATE_SPEECH,
