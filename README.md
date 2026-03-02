@@ -365,6 +365,8 @@ Create a test plan covering the changes in the diff using the Flash model with t
 | `GEMINI_BATCH_MODE`             | Request mode for Gemini calls (`off`, `inline`)      | `off`        | No       |
 | `GEMINI_BATCH_POLL_INTERVAL_MS` | Poll interval for batch job status                   | `2000`       | No       |
 | `GEMINI_BATCH_TIMEOUT_MS`       | Max wait for batch completion                        | `120000`     | No       |
+| `GEMINI_DIFF_CACHE_ENABLED`     | Enable Gemini context caching for large diffs        | `false`      | No       |
+| `GEMINI_DIFF_CACHE_TTL_S`       | TTL in seconds for cached diff content               | `3600`       | No       |
 
 ### Models
 

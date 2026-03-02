@@ -4,6 +4,13 @@ import type { File as ParsedFile } from 'parse-diff';
 
 import { createCachedEnvInt } from './config.js';
 import { formatUsNumber } from './format.js';
+import {
+  clearDiffCacheLocal,
+  createDiffCache,
+  type DiffCacheSlot,
+  getCurrentDiffCache,
+  shouldCacheDiff,
+} from './gemini/cache.js';
 import { createErrorToolResponse, type ErrorMeta } from './tools.js';
 
 export type { ParsedFile };
@@ -317,6 +324,15 @@ export function initDiffStore(server: McpServer): void {
 export function storeDiff(data: DiffSlot, key: string = process.cwd()): void {
   setDiffSlot(key, data);
   notifyDiffUpdated();
+
+  // Fire-and-forget: create Gemini context cache for large diffs.
+  if (shouldCacheDiff(data.diff.length)) {
+    void createDiffCache(data.diff).catch(() => {
+      // Cache creation is best-effort; failures are logged internally.
+    });
+  } else {
+    clearDiffCacheLocal();
+  }
 }
 
 export function getDiff(key: string = process.cwd()): DiffSlot | undefined {
@@ -337,6 +353,11 @@ export function getDiff(key: string = process.cwd()): DiffSlot | undefined {
 
 export function hasDiff(key: string = process.cwd()): boolean {
   return getDiff(key) !== undefined;
+}
+
+/** Returns the current Gemini context cache slot for the diff, if available and model-compatible. */
+export function getDiffCacheSlot(model?: string): DiffCacheSlot | undefined {
+  return getCurrentDiffCache(model);
 }
 
 /** Test-only: directly set or clear the diff slot without emitting resource-updated. */

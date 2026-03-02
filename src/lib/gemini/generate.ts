@@ -147,6 +147,10 @@ function buildGenerationConfig(
     config.thinkingConfig = thinkingConfig;
   }
 
+  if (request.cachedContent) {
+    config.cachedContent = request.cachedContent;
+  }
+
   return config;
 }
 

@@ -36,6 +36,31 @@ export {
   setClientForTesting,
 } from './client.js';
 
+// Context caching
+export {
+  clearDiffCacheLocal,
+  createDiffCache,
+  type DiffCacheSlot,
+  deleteDiffCache,
+  getCurrentDiffCache,
+  isDiffCacheEnabled,
+  setDiffCacheForTesting,
+  shouldCacheDiff,
+} from './cache.js';
+
+// File Search Stores (RAG)
+export {
+  clearSearchStoreLocal,
+  createSearchStore,
+  type SearchStoreSlot,
+  deleteSearchStore,
+  getCurrentSearchStore,
+  getSearchStoreInfo,
+  setCurrentSearchStore,
+  setSearchStoreForTesting,
+  uploadToSearchStore,
+} from './search-store.js';
+
 // Generation functions + queue snapshot
 export {
   generateGroundedContent,

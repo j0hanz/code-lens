@@ -25,6 +25,7 @@ export interface GeminiStructuredRequest extends GeminiStructuredRequestOptions 
   systemInstruction?: string;
   prompt: string;
   responseSchema: Readonly<JsonObject>;
+  cachedContent?: string;
 }
 
 export type GeminiOnLog = GeminiStructuredRequest['onLog'];

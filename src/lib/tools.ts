@@ -33,6 +33,7 @@ import {
   type DiffSlot,
   diffStaleWarningMs,
   getDiff,
+  getDiffCacheSlot,
 } from './diff.js';
 import { validateDiffBudget } from './diff.js';
 import { type DiffStats, EMPTY_DIFF_STATS, type ParsedFile } from './diff.js';
@@ -825,7 +826,8 @@ function createGenerationRequest<
   promptParts: PromptParts,
   responseSchema: Record<string, unknown>,
   onLog: (level: string, data: unknown) => Promise<void>,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  cachedContent?: string
 ): GeminiStructuredRequest {
   const request: GeminiStructuredRequest = {
     systemInstruction: promptParts.systemInstruction,
@@ -847,6 +849,7 @@ function createGenerationRequest<
       : {}),
     ...(config.batchMode !== undefined ? { batchMode: config.batchMode } : {}),
     ...(signal !== undefined ? { signal } : {}),
+    ...(cachedContent !== undefined ? { cachedContent } : {}),
   };
 
   if (config.deterministicJson) {
@@ -1072,13 +1075,19 @@ export class ToolExecutionRunner<
     prompt: string,
     attempt: number
   ): Promise<TResult> {
+    // Resolve Gemini context cache for diff-dependent tools (best-effort).
+    const cachedContent = this.config.requiresDiff
+      ? getDiffCacheSlot()?.cacheName
+      : undefined;
+
     const raw = await generateStructuredJson(
       createGenerationRequest(
         this.config,
         { systemInstruction, prompt },
         this.responseSchema,
         this.onLog,
-        this.signal
+        this.signal,
+        cachedContent
       )
     );
 

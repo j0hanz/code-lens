@@ -104,6 +104,28 @@ export const VerifyLogicInputSchema = z.strictObject({
   language: LanguageSchema,
 });
 
+export const IndexRepositoryInputSchema = z.strictObject({
+  rootPath: z
+    .string()
+    .min(1)
+    .max(500)
+    .describe('Absolute path to the repository root directory.'),
+  displayName: createOptionalBoundedString(
+    1,
+    100,
+    'Display name for the search store. Default: directory name.'
+  ),
+});
+
+export const QueryRepositoryInputSchema = z.strictObject({
+  query: createBoundedString(
+    1,
+    2000,
+    'Natural-language question about the repository codebase.'
+  ),
+  language: LanguageSchema,
+});
+
 export type AnalyzePrImpactInput = z.infer<typeof AnalyzePrImpactInputSchema>;
 export type GenerateReviewSummaryInput = z.infer<
   typeof GenerateReviewSummaryInputSchema
@@ -120,3 +142,5 @@ export type LoadFileInput = z.infer<typeof LoadFileInputSchema>;
 export type RefactorCodeInput = z.infer<typeof RefactorCodeInputSchema>;
 export type AskInput = z.infer<typeof AskInputSchema>;
 export type VerifyLogicInput = z.infer<typeof VerifyLogicInputSchema>;
+export type IndexRepositoryInput = z.infer<typeof IndexRepositoryInputSchema>;
+export type QueryRepositoryInput = z.infer<typeof QueryRepositoryInputSchema>;
