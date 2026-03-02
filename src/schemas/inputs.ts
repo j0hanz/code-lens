@@ -95,6 +95,15 @@ export const AskInputSchema = z.strictObject({
   language: LanguageSchema,
 });
 
+export const VerifyLogicInputSchema = z.strictObject({
+  question: createBoundedString(
+    1,
+    2000,
+    'What to verify in the loaded file (e.g. algorithm correctness, edge cases).'
+  ),
+  language: LanguageSchema,
+});
+
 export type AnalyzePrImpactInput = z.infer<typeof AnalyzePrImpactInputSchema>;
 export type GenerateReviewSummaryInput = z.infer<
   typeof GenerateReviewSummaryInputSchema
@@ -110,3 +119,4 @@ export type WebSearchInput = z.infer<typeof WebSearchInputSchema>;
 export type LoadFileInput = z.infer<typeof LoadFileInputSchema>;
 export type RefactorCodeInput = z.infer<typeof RefactorCodeInputSchema>;
 export type AskInput = z.infer<typeof AskInputSchema>;
+export type VerifyLogicInput = z.infer<typeof VerifyLogicInputSchema>;

@@ -520,6 +520,27 @@ export const TOOL_CONTRACTS = [
       'Use after load_file. Complements refactor_code for understanding code.',
     ],
   },
+  {
+    name: 'verify_logic',
+    purpose:
+      'Verify algorithms and logic in cached file using Gemini code execution sandbox.',
+    model: FLASH_MODEL,
+    timeoutMs: DEFAULT_TIMEOUT_EXTENDED_MS,
+    thinkingLevel: FLASH_THINKING_LEVEL,
+    maxOutputTokens: FLASH_REFACTOR_MAX_OUTPUT_TOKENS,
+    temperature: ANALYSIS_TEMPERATURE,
+    deterministicJson: false,
+    params: cloneParams(QUESTION_PARAM, LANGUAGE_PARAM),
+    outputShape:
+      '{answer, verified, codeBlocks[{code, language}], executionResults[{outcome, output}], filePath, language}',
+    gotchas: [
+      'Requires load_file first.',
+      'Code execution runs Python only (server-side sandbox).',
+    ],
+    crossToolFlow: [
+      'Use after load_file. Complements ask_about_code for verification tasks.',
+    ],
+  },
 ] as const satisfies readonly ToolContract[];
 
 const TOOL_CONTRACTS_BY_NAME = new Map<string, ToolContract>(

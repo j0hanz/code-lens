@@ -40,6 +40,7 @@ export interface GeminiRequestExecutionOptions {
   responseKeyOrdering?: readonly string[];
   batchMode?: 'off' | 'inline';
   useGrounding?: boolean;
+  useCodeExecution?: boolean;
 }
 
 export interface GeminiStructuredRequestOptions extends GeminiRequestExecutionOptions {
@@ -590,8 +591,16 @@ function buildGenerationConfig(
     abortSignal,
   };
 
+  const tools: GenerateContentConfig['tools'] = [];
   if (request.useGrounding) {
-    config.tools = [{ googleSearch: {} }];
+    tools.push({ googleSearch: {} });
+  }
+  if (request.useCodeExecution) {
+    tools.push({ codeExecution: {} });
+  }
+
+  if (tools.length > 0) {
+    config.tools = tools;
   } else {
     config.responseMimeType = 'application/json';
     config.responseSchema = applyResponseKeyOrdering(
@@ -745,6 +754,10 @@ async function executeAttempt(
     throw new Error(
       `Response truncated: model output exceeds limit (maxOutputTokens=${formatUsNumber(limit)}). Increase maxOutputTokens or reduce prompt complexity.`
     );
+  }
+
+  if (request.useCodeExecution) {
+    return extractCodeExecutionResponse(response);
   }
 
   if (request.useGrounding) {
@@ -1240,6 +1253,98 @@ export function getGeminiQueueSnapshot(): {
     activeBatchWaiters: batchCallLimiter.pendingCount,
     activeBatchCalls: batchCallLimiter.active,
   };
+}
+
+export interface CodeExecutionBlock {
+  code: string;
+  language: string;
+}
+
+export interface CodeExecutionResultBlock {
+  outcome: string;
+  output: string;
+}
+
+export interface CodeExecutionResponse {
+  text: string;
+  codeBlocks: CodeExecutionBlock[];
+  executionResults: CodeExecutionResultBlock[];
+}
+
+interface ExecutableCodePart {
+  executableCode: { code?: string; language?: string };
+}
+
+interface CodeExecutionResultPart {
+  codeExecutionResult: { outcome?: string; output?: string };
+}
+
+function isExecutableCodePart(part: unknown): part is ExecutableCodePart {
+  return (
+    typeof part === 'object' &&
+    part !== null &&
+    'executableCode' in part &&
+    typeof (part as ExecutableCodePart).executableCode === 'object'
+  );
+}
+
+function isCodeExecutionResultPart(
+  part: unknown
+): part is CodeExecutionResultPart {
+  return (
+    typeof part === 'object' &&
+    part !== null &&
+    'codeExecutionResult' in part &&
+    typeof (part as CodeExecutionResultPart).codeExecutionResult === 'object'
+  );
+}
+
+function extractCodeExecutionResponse(
+  response: Awaited<ReturnType<GoogleGenAI['models']['generateContent']>>
+): CodeExecutionResponse {
+  const parts = response.candidates?.[0]?.content?.parts;
+  const textSegments: string[] = [];
+  const codeBlocks: CodeExecutionBlock[] = [];
+  const executionResults: CodeExecutionResultBlock[] = [];
+
+  if (Array.isArray(parts)) {
+    for (const part of parts) {
+      if (isExecutableCodePart(part)) {
+        codeBlocks.push({
+          code: part.executableCode.code ?? '',
+          language: part.executableCode.language ?? 'python',
+        });
+      } else if (isCodeExecutionResultPart(part)) {
+        executionResults.push({
+          outcome: part.codeExecutionResult.outcome ?? 'OUTCOME_UNSPECIFIED',
+          output: part.codeExecutionResult.output ?? '',
+        });
+      } else if (
+        typeof part === 'object' &&
+        'text' in part &&
+        typeof (part as { text: unknown }).text === 'string' &&
+        !(part as { thought?: unknown }).thought
+      ) {
+        textSegments.push((part as { text: string }).text);
+      }
+    }
+  }
+
+  return {
+    text: textSegments.join('\n\n') || (response.text ?? ''),
+    codeBlocks,
+    executionResults,
+  };
+}
+
+export async function generateWithCodeExecution(
+  request: GeminiStructuredRequest
+): Promise<CodeExecutionResponse> {
+  return (await generateStructuredJson({
+    ...request,
+    useCodeExecution: true,
+    responseSchema: request.responseSchema,
+  })) as CodeExecutionResponse;
 }
 
 export async function generateGroundedContent(

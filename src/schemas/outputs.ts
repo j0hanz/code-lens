@@ -313,3 +313,43 @@ export const AskResultSchema = AskGeminiResultSchema.extend({
 export type AskCodeReference = z.infer<typeof AskCodeReferenceSchema>;
 export type AskGeminiResult = z.infer<typeof AskGeminiResultSchema>;
 export type AskResult = z.infer<typeof AskResultSchema>;
+
+const EXECUTION_OUTCOMES = [
+  'OUTCOME_OK',
+  'OUTCOME_FAILED',
+  'OUTCOME_DEADLINE_EXCEEDED',
+  'OUTCOME_UNSPECIFIED',
+] as const;
+
+export const VerifyLogicResultSchema = z.strictObject({
+  answer: z
+    .string()
+    .min(1)
+    .max(10_000)
+    .describe('Analysis and conclusion from the verification.'),
+  verified: z
+    .boolean()
+    .describe('True if all execution results passed (OUTCOME_OK).'),
+  codeBlocks: z
+    .array(
+      z.strictObject({
+        code: z.string().describe('Generated verification code.'),
+        language: z.string().describe('Programming language (e.g. python).'),
+      })
+    )
+    .max(10)
+    .describe('Code generated and executed during verification.'),
+  executionResults: z
+    .array(
+      z.strictObject({
+        outcome: z.enum(EXECUTION_OUTCOMES).describe('Execution outcome.'),
+        output: z.string().describe('stdout on success, stderr on failure.'),
+      })
+    )
+    .max(10)
+    .describe('Results from server-side code execution.'),
+  filePath: z.string().describe('Analyzed file path.'),
+  language: z.string().describe('Detected/provided language.'),
+});
+
+export type VerifyLogicResult = z.infer<typeof VerifyLogicResultSchema>;
