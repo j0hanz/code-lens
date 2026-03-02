@@ -1,33 +1,32 @@
-# Code Assistant MCP Server
+# Code Assistant MCP
 
-<!-- mcp-name: io.github.j0hanz/code-assistant -->
-
-[![npm](https://img.shields.io/npm/v/%40j0hanz%2Fcode-assistant?style=flat-square&logo=npm&logoColor=white&color=CB3837)](https://www.npmjs.com/package/@j0hanz/code-assistant) [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D24-339933?style=flat-square&logo=nodedotjs&logoColor=white)](package.json) [![TypeScript](https://img.shields.io/badge/TypeScript-5.9%2B-3178C6?style=flat-square&logo=typescript&logoColor=white)](package.json) [![MCP SDK](https://img.shields.io/badge/MCP_SDK-1.26%2B-6f42c1?style=flat-square)](package.json) [![License](https://img.shields.io/badge/License-MIT-blue?style=flat-square)](package.json)
-
-[![Install in VS Code](https://img.shields.io/badge/VS_Code-Install_Server-0098FF?style=flat-square&logo=visualstudiocode&logoColor=white)](https://insiders.vscode.dev/redirect/mcp/install?name=Code+Assistant&config=%7B%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22%40j0hanz%2Fcode-assistant%40latest%22%5D%7D) [![Install in VS Code Insiders](https://img.shields.io/badge/VS_Code_Insiders-Install_Server-24bfa5?style=flat-square&logo=visualstudiocode&logoColor=white)](https://insiders.vscode.dev/redirect/mcp/install?name=Code+Assistant&config=%7B%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22%40j0hanz%2Fcode-assistant%40latest%22%5D%7D&quality=insiders) [![Install in Visual Studio](https://img.shields.io/badge/Visual_Studio-Install_Server-C16FDE?logo=visualstudio&logoColor=white)](https://vs-open.link/mcp-install?%7B%22name%22%3A%22code-assistant%22%2C%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22%40j0hanz%2Fcode-assistant%40latest%22%5D%7D)
-
-[![Install in Cursor](https://cursor.com/deeplink/mcp-install-dark.svg)](https://cursor.com/en/install-mcp?name=code-assistant&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsIkBqMGhhbnovY29kZS1hc3Npc3RhbnRAbGF0ZXN0Il19)
+[![npm](https://img.shields.io/npm/v/@j0hanz/code-assistant?style=flat-square&logo=npm&logoColor=white&color=CB3837)](https://www.npmjs.com/package/@j0hanz/code-assistant) [![License: MIT](https://img.shields.io/badge/License-MIT-blue?style=flat-square)](https://opensource.org/licenses/MIT) [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/) [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D24-339933?style=flat-square&logo=nodedotjs&logoColor=white)](https://nodejs.org/) [![Docker](https://img.shields.io/badge/Docker-Available-2496ED?style=flat-square&logo=docker&logoColor=white)](https://github.com/j0hanz/code-assistant/pkgs/container/code-assistant)
 
 Gemini-powered MCP server for code analysis with structured outputs for findings, risk assessment, and focused patch suggestions.
 
+[![Install in VS Code](https://img.shields.io/badge/VS_Code-Install_Server-0098FF?style=flat-square&logo=visualstudiocode&logoColor=white)](https://insiders.vscode.dev/redirect/mcp/install?name=code-assistant&config=%7B%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22%40j0hanz%2Fcode-assistant%40latest%22%5D%7D) [![Install in VS Code Insiders](https://img.shields.io/badge/VS_Code_Insiders-Install_Server-24bfa5?style=flat-square&logo=visualstudiocode&logoColor=white)](https://insiders.vscode.dev/redirect/mcp/install?name=code-assistant&config=%7B%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22%40j0hanz%2Fcode-assistant%40latest%22%5D%7D&quality=insiders)
+
+[![Add to LM Studio](https://files.lmstudio.ai/deeplink/mcp-install-light.svg)](https://lmstudio.ai/install-mcp?name=code-assistant&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsIkBqMGhhbnovY29kZS1hc3Npc3RhbnRAbGF0ZXN0Il19) [![Install in Cursor](https://cursor.com/deeplink/mcp-install-dark.svg)](cursor://anysphere.cursor-deeplink/mcp/install?name=code-assistant&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsIkBqMGhhbnovY29kZS1hc3Npc3RhbnRAbGF0ZXN0Il19) [![Install in Goose](https://block.github.io/goose/img/extension-install-dark.svg)](https://block.github.io/goose/extension?cmd=npx&arg=-y%20%40j0hanz%2Fcode-assistant%40latest&id=code-assistant&name=Code%20Assistant&description=Gemini-powered%20MCP%20server%20for%20code%20analysis)
+
 ## Overview
 
-This server accepts unified diffs and returns structured JSON results — findings with severity, impact categories, merge risk, test plans, and verbatim search/replace fixes. It uses Gemini Thinking models (Flash for fast tools, Flash for deep analysis) and runs over **stdio transport**.
+Code Assistant is a [Model Context Protocol](https://modelcontextprotocol.io/) server that connects AI assistants to the Google Gemini API for automated code review, refactoring suggestions, complexity analysis, breaking-change detection, and test plan generation. It operates over **stdio** transport and exposes **13 tools**, **7 resources**, and **2 prompts**.
 
 ## Key Features
 
-- **Impact Analysis** — Objective severity scoring, breaking change detection, and rollback complexity assessment.
-- **Review Summary** — Concise PR digest with merge recommendation and change statistics.
-- **Deep Code Inspection** — Flash model with high thinking level for context-aware analysis using full file contents.
-- **Search & Replace Fixes** — Verbatim, copy-paste-ready code fixes tied to specific findings.
-- **Test Plan Generation** — Systematic test case generation with priority ranking and pseudocode.
-- **Async Task Support** — All tools support MCP task lifecycle with progress notifications.
+- **Diff-based code review** — generate diffs from git, then analyze PR impact, produce review summaries, detect API breaking changes, and assess time/space complexity
+- **File-based analysis** — load individual files for refactoring suggestions, question answering, and logic verification via Gemini's code execution sandbox
+- **Repository indexing** — walk a local repository into a Gemini File Search Store for natural-language RAG queries
+- **Web search** — Google Search with Grounding for up-to-date information
+- **Structured outputs** — all Gemini-backed tools return validated JSON via Zod v4 schemas
+- **Task lifecycle** — supports MCP Tasks API for async operation tracking with cancellation
+- **Configurable thinking** — per-tool thinking levels (minimal/medium/high) balance speed vs depth
+- **Multi-platform Docker** — published to GHCR for `linux/amd64` and `linux/arm64`
 
 ## Requirements
 
-- Node.js `>=24`
-- One API key: `GEMINI_API_KEY` or `GOOGLE_API_KEY`
-- MCP client that supports stdio servers and tool calls
+- **Node.js** >= 24
+- A [**Google Gemini API key**](https://aistudio.google.com/apikey) (`GEMINI_API_KEY` or `GOOGLE_API_KEY`)
 
 ## Quick Start
 
@@ -38,21 +37,24 @@ This server accepts unified diffs and returns structured JSON results — findin
       "command": "npx",
       "args": ["-y", "@j0hanz/code-assistant@latest"],
       "env": {
-        "GEMINI_API_KEY": "YOUR_API_KEY"
+        "GEMINI_API_KEY": "<your-api-key>"
       }
     }
   }
 }
 ```
 
+> [!TIP]
+> Use the one-click install badges above for automatic setup in VS Code, Cursor, Goose, or LM Studio.
+
 ## Client Configuration
 
 <details>
-<summary><b>VS Code / VS Code Insiders</b></summary>
+<summary><b>Install in VS Code</b></summary>
 
-[![Install in VS Code](https://img.shields.io/badge/VS_Code-Install_Server-0098FF?style=flat-square&logo=visualstudiocode&logoColor=white)](https://insiders.vscode.dev/redirect/mcp/install?name=Code+Assistant&config=%7B%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22%40j0hanz%2Fcode-assistant%40latest%22%5D%7D) [![Install in VS Code Insiders](https://img.shields.io/badge/VS_Code_Insiders-Install_Server-24bfa5?style=flat-square&logo=visualstudiocode&logoColor=white)](https://insiders.vscode.dev/redirect/mcp/install?name=Code+Assistant&config=%7B%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22%40j0hanz%2Fcode-assistant%40latest%22%5D%7D&quality=insiders)
+[![Install in VS Code](https://img.shields.io/badge/VS_Code-Install_Server-0098FF?style=flat-square&logo=visualstudiocode&logoColor=white)](https://insiders.vscode.dev/redirect/mcp/install?name=code-assistant&config=%7B%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22%40j0hanz%2Fcode-assistant%40latest%22%5D%7D)
 
-Add to `.vscode/mcp.json`:
+Or add manually to `.vscode/mcp.json`:
 
 ```json
 {
@@ -61,7 +63,7 @@ Add to `.vscode/mcp.json`:
       "command": "npx",
       "args": ["-y", "@j0hanz/code-assistant@latest"],
       "env": {
-        "GEMINI_API_KEY": "YOUR_API_KEY"
+        "GEMINI_API_KEY": "<your-api-key>"
       }
     }
   }
@@ -74,14 +76,29 @@ Or via CLI:
 code --add-mcp '{"name":"code-assistant","command":"npx","args":["-y","@j0hanz/code-assistant@latest"]}'
 ```
 
+For more info, see [VS Code MCP docs](https://code.visualstudio.com/docs/copilot/chat/mcp-servers).
+
 </details>
 
 <details>
-<summary><b>Cursor</b></summary>
+<summary><b>Install in VS Code Insiders</b></summary>
 
-[![Install in Cursor](https://cursor.com/deeplink/mcp-install-dark.svg)](https://cursor.com/en/install-mcp?name=code-assistant&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsIkBqMGhhbnovY29kZS1hc3Npc3RhbnRAbGF0ZXN0Il19)
+[![Install in VS Code Insiders](https://img.shields.io/badge/VS_Code_Insiders-Install_Server-24bfa5?style=flat-square&logo=visualstudiocode&logoColor=white)](https://insiders.vscode.dev/redirect/mcp/install?name=code-assistant&config=%7B%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22%40j0hanz%2Fcode-assistant%40latest%22%5D%7D&quality=insiders)
 
-Add to `~/.cursor/mcp.json`:
+Or via CLI:
+
+```bash
+code-insiders --add-mcp '{"name":"code-assistant","command":"npx","args":["-y","@j0hanz/code-assistant@latest"]}'
+```
+
+</details>
+
+<details>
+<summary><b>Install in Cursor</b></summary>
+
+[![Install in Cursor](https://cursor.com/deeplink/mcp-install-dark.svg)](cursor://anysphere.cursor-deeplink/mcp/install?name=code-assistant&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsIkBqMGhhbnovY29kZS1hc3Npc3RhbnRAbGF0ZXN0Il19)
+
+Or add to `~/.cursor/mcp.json`:
 
 ```json
 {
@@ -90,26 +107,19 @@ Add to `~/.cursor/mcp.json`:
       "command": "npx",
       "args": ["-y", "@j0hanz/code-assistant@latest"],
       "env": {
-        "GEMINI_API_KEY": "YOUR_API_KEY"
+        "GEMINI_API_KEY": "<your-api-key>"
       }
     }
   }
 }
 ```
 
-</details>
-
-<details>
-<summary><b>Visual Studio</b></summary>
-
-[![Install in Visual Studio](https://img.shields.io/badge/Visual_Studio-Install_Server-C16FDE?logo=visualstudio&logoColor=white)](https://vs-open.link/mcp-install?%7B%22name%22%3A%22code-assistant%22%2C%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22%40j0hanz%2Fcode-assistant%40latest%22%5D%7D)
-
-For more info, see [Visual Studio MCP docs](https://learn.microsoft.com/en-us/visualstudio/ide/mcp-servers).
+For more info, see [Cursor MCP docs](https://docs.cursor.com/context/model-context-protocol).
 
 </details>
 
 <details>
-<summary><b>Claude Desktop</b></summary>
+<summary><b>Install in Claude Desktop</b></summary>
 
 Add to `claude_desktop_config.json`:
 
@@ -120,7 +130,7 @@ Add to `claude_desktop_config.json`:
       "command": "npx",
       "args": ["-y", "@j0hanz/code-assistant@latest"],
       "env": {
-        "GEMINI_API_KEY": "YOUR_API_KEY"
+        "GEMINI_API_KEY": "<your-api-key>"
       }
     }
   }
@@ -132,20 +142,20 @@ For more info, see [Claude Desktop MCP docs](https://modelcontextprotocol.io/qui
 </details>
 
 <details>
-<summary><b>Claude Code</b></summary>
+<summary><b>Install in Claude Code</b></summary>
 
 ```bash
 claude mcp add code-assistant -- npx -y @j0hanz/code-assistant@latest
 ```
 
-For more info, see [Claude Code MCP docs](https://docs.anthropic.com/en/docs/agents-and-tools/claude-code/tutorials#set-up-model-context-protocol-mcp).
+For more info, see [Claude Code MCP docs](https://docs.anthropic.com/en/docs/claude-code/mcp).
 
 </details>
 
 <details>
-<summary><b>Windsurf</b></summary>
+<summary><b>Install in Windsurf</b></summary>
 
-Add to MCP config:
+Add to your Windsurf MCP config:
 
 ```json
 {
@@ -154,7 +164,7 @@ Add to MCP config:
       "command": "npx",
       "args": ["-y", "@j0hanz/code-assistant@latest"],
       "env": {
-        "GEMINI_API_KEY": "YOUR_API_KEY"
+        "GEMINI_API_KEY": "<your-api-key>"
       }
     }
   }
@@ -166,18 +176,18 @@ For more info, see [Windsurf MCP docs](https://docs.windsurf.com/windsurf/mcp).
 </details>
 
 <details>
-<summary><b>Amp</b></summary>
+<summary><b>Install in Amp</b></summary>
 
 ```bash
 amp mcp add code-assistant -- npx -y @j0hanz/code-assistant@latest
 ```
 
-For more info, see [Amp MCP docs](https://docs.amp.dev/mcp).
+For more info, see [Amp MCP docs](https://docs.amp.dev).
 
 </details>
 
 <details>
-<summary><b>Cline</b></summary>
+<summary><b>Install in Cline</b></summary>
 
 Add to `cline_mcp_settings.json`:
 
@@ -188,68 +198,17 @@ Add to `cline_mcp_settings.json`:
       "command": "npx",
       "args": ["-y", "@j0hanz/code-assistant@latest"],
       "env": {
-        "GEMINI_API_KEY": "YOUR_API_KEY"
+        "GEMINI_API_KEY": "<your-api-key>"
       }
     }
   }
 }
 ```
 
-For more info, see [Cline MCP docs](https://docs.cline.bot/mcp-servers/configuring-mcp-servers).
-
 </details>
 
 <details>
-<summary><b>Zed</b></summary>
-
-Add to Zed `settings.json`:
-
-```json
-{
-  "context_servers": {
-    "code-assistant": {
-      "command": {
-        "path": "npx",
-        "args": ["-y", "@j0hanz/code-assistant@latest"],
-        "env": {
-          "GEMINI_API_KEY": "YOUR_API_KEY"
-        }
-      }
-    }
-  }
-}
-```
-
-For more info, see [Zed MCP docs](https://zed.dev/docs/assistant/model-context-protocol).
-
-</details>
-
-<details>
-<summary><b>Augment</b></summary>
-
-Add to `settings.json`:
-
-```json
-{
-  "augment.advanced": {
-    "mcpServers": [
-      {
-        "name": "code-assistant",
-        "command": "npx",
-        "args": ["-y", "@j0hanz/code-assistant@latest"],
-        "env": {
-          "GEMINI_API_KEY": "YOUR_API_KEY"
-        }
-      }
-    ]
-  }
-}
-```
-
-</details>
-
-<details>
-<summary><b>Docker</b></summary>
+<summary><b>Install via Docker</b></summary>
 
 ```json
 {
@@ -261,179 +220,242 @@ Add to `settings.json`:
         "-i",
         "--rm",
         "-e",
-        "GEMINI_API_KEY=YOUR_API_KEY",
+        "GEMINI_API_KEY",
         "ghcr.io/j0hanz/code-assistant:latest"
-      ]
+      ],
+      "env": {
+        "GEMINI_API_KEY": "<your-api-key>"
+      }
     }
   }
 }
 ```
 
-Or build locally:
+Or run directly:
+
+```bash
+docker run -i -e GEMINI_API_KEY="<your-api-key>" ghcr.io/j0hanz/code-assistant:latest
+```
+
+</details>
+
+## MCP Surface
+
+### Tools
+
+#### `generate_diff`
+
+Generate a diff of current changes and cache it server-side. Must be called before diff-based analysis tools.
+
+| Name   | Type     | Required | Description                              |
+| ------ | -------- | -------- | ---------------------------------------- |
+| `mode` | `string` | yes      | `'unstaged'` or `'staged'` diff capture. |
+
+#### `analyze_pr_impact`
+
+Assess severity, categories, breaking changes, and rollback complexity.
+
+| Name         | Type     | Required | Description                         |
+| ------------ | -------- | -------- | ----------------------------------- |
+| `repository` | `string` | yes      | Repository identifier (owner/repo). |
+| `language`   | `string` | no       | Primary language hint.              |
+
+#### `generate_review_summary`
+
+Produce PR summary, risk rating, and merge recommendation.
+
+| Name         | Type     | Required | Description                         |
+| ------------ | -------- | -------- | ----------------------------------- |
+| `repository` | `string` | yes      | Repository identifier (owner/repo). |
+| `language`   | `string` | no       | Primary language hint.              |
+
+#### `generate_test_plan`
+
+Generate prioritized test cases and coverage guidance.
+
+| Name            | Type     | Required | Description                         |
+| --------------- | -------- | -------- | ----------------------------------- |
+| `repository`    | `string` | yes      | Repository identifier (owner/repo). |
+| `language`      | `string` | no       | Primary language hint.              |
+| `testFramework` | `string` | no       | Framework hint (jest, pytest, etc). |
+| `maxTestCases`  | `number` | no       | Max test cases (1-30).              |
+
+#### `analyze_time_space_complexity`
+
+Analyze Big-O complexity and detect degradations in changed code.
+
+| Name       | Type     | Required | Description            |
+| ---------- | -------- | -------- | ---------------------- |
+| `language` | `string` | no       | Primary language hint. |
+
+#### `detect_api_breaking_changes`
+
+Detect breaking API/interface changes in a diff.
+
+| Name       | Type     | Required | Description            |
+| ---------- | -------- | -------- | ---------------------- |
+| `language` | `string` | no       | Primary language hint. |
+
+#### `load_file`
+
+Read a single file from disk and cache it server-side. Must be called before file analysis tools.
+
+| Name       | Type     | Required | Description                        |
+| ---------- | -------- | -------- | ---------------------------------- |
+| `filePath` | `string` | yes      | Absolute path to the file to load. |
+
+#### `refactor_code`
+
+Analyze cached file for naming, complexity, duplication, and grouping improvements.
+
+| Name       | Type     | Required | Description            |
+| ---------- | -------- | -------- | ---------------------- |
+| `language` | `string` | no       | Primary language hint. |
+
+#### `ask_about_code`
+
+Answer natural-language questions about a cached file.
+
+| Name       | Type     | Required | Description                     |
+| ---------- | -------- | -------- | ------------------------------- |
+| `question` | `string` | yes      | Question about the loaded file. |
+| `language` | `string` | no       | Primary language hint.          |
+
+#### `verify_logic`
+
+Verify algorithms and logic in cached file using Gemini code execution sandbox.
+
+| Name       | Type     | Required | Description                     |
+| ---------- | -------- | -------- | ------------------------------- |
+| `question` | `string` | yes      | Question about the loaded file. |
+| `language` | `string` | no       | Primary language hint.          |
+
+#### `web_search`
+
+Perform a Google Search with Grounding to get up-to-date information.
+
+| Name    | Type     | Required | Description   |
+| ------- | -------- | -------- | ------------- |
+| `query` | `string` | yes      | Search query. |
+
+#### `index_repository`
+
+Walk a local repository, upload source files to a Gemini File Search Store for RAG queries.
+
+| Name          | Type     | Required | Description                                    |
+| ------------- | -------- | -------- | ---------------------------------------------- |
+| `rootPath`    | `string` | yes      | Absolute path to the repository root.          |
+| `displayName` | `string` | no       | Display name for the store. Default: dir name. |
+
+#### `query_repository`
+
+Query the indexed repository search store using natural language.
+
+| Name       | Type     | Required | Description                               |
+| ---------- | -------- | -------- | ----------------------------------------- |
+| `query`    | `string` | yes      | Natural-language question about the repo. |
+| `language` | `string` | no       | Primary language hint.                    |
+
+### Resources
+
+| URI Pattern                       | MIME Type     | Description                                |
+| --------------------------------- | ------------- | ------------------------------------------ |
+| `internal://instructions`         | text/markdown | Complete server usage instructions.        |
+| `internal://tool-catalog`         | text/markdown | Tool reference: models, params, data flow. |
+| `internal://workflows`            | text/markdown | Recommended workflows and tool sequences.  |
+| `internal://server-config`        | text/markdown | Runtime configuration and limits.          |
+| `internal://tool-info/{toolName}` | text/markdown | Per-tool reference (supports completions). |
+| `internal://diff/current`         | text/x-patch  | Most recently generated diff (cached).     |
+| `internal://file/current`         | text/plain    | Most recently loaded file (cached).        |
+
+### Prompts
+
+| Prompt         | Arguments           | Description                         |
+| -------------- | ------------------- | ----------------------------------- |
+| `get-help`     | none                | Server instructions.                |
+| `review-guide` | `tool`, `focusArea` | Workflow guide for tool/focus area. |
+
+## Configuration
+
+### Environment Variables
+
+| Variable                        | Default                  | Required | Description                                                                                  |
+| ------------------------------- | ------------------------ | -------- | -------------------------------------------------------------------------------------------- |
+| `GEMINI_API_KEY`                | N/A                      | yes      | Google Gemini API key.                                                                       |
+| `GOOGLE_API_KEY`                | N/A                      | yes\*    | Alternative API key variable (\*either one required).                                        |
+| `GEMINI_MODEL`                  | `gemini-3-flash-preview` | no       | Model override for all tools.                                                                |
+| `MAX_DIFF_CHARS`                | `120000`                 | no       | Max diff size in characters.                                                                 |
+| `GEMINI_HARM_BLOCK_THRESHOLD`   | `BLOCK_NONE`             | no       | Safety threshold (BLOCK_NONE, BLOCK_ONLY_HIGH, BLOCK_MEDIUM_AND_ABOVE, BLOCK_LOW_AND_ABOVE). |
+| `GEMINI_INCLUDE_THOUGHTS`       | `false`                  | no       | Include model thinking in responses.                                                         |
+| `GEMINI_BATCH_MODE`             | `off`                    | no       | Batch mode: `off` or `inline`.                                                               |
+| `GEMINI_BATCH_POLL_INTERVAL_MS` | N/A                      | no       | Poll cadence for batch status checks.                                                        |
+| `GEMINI_BATCH_TIMEOUT_MS`       | N/A                      | no       | Max wait for batch completion.                                                               |
+| `MAX_CONCURRENT_CALLS`          | `10`                     | no       | Max concurrent Gemini calls.                                                                 |
+| `MAX_CONCURRENT_BATCH_CALLS`    | `2`                      | no       | Max concurrent batch calls.                                                                  |
+| `MAX_CONCURRENT_CALLS_WAIT_MS`  | `2000`                   | no       | Wait timeout for concurrency queue (ms).                                                     |
+| `GEMINI_DIFF_CACHE_ENABLED`     | `false`                  | no       | Enable Gemini-side diff caching.                                                             |
+| `GEMINI_DIFF_CACHE_TTL_S`       | N/A                      | no       | Cache TTL in seconds.                                                                        |
+
+### CLI Arguments
+
+| Flag               | Short | Maps to env var  | Description             |
+| ------------------ | ----- | ---------------- | ----------------------- |
+| `--model`          | `-m`  | `GEMINI_MODEL`   | Override default model. |
+| `--max-diff-chars` |       | `MAX_DIFF_CHARS` | Override diff budget.   |
+
+## Security
+
+| Control                     | Status    | Evidence                                                   |
+| --------------------------- | --------- | ---------------------------------------------------------- |
+| Non-root Docker user        | confirmed | `Dockerfile` — `adduser -D mcp`, `USER mcp`                |
+| Read-only volume mount      | confirmed | `docker-compose.yml` — `:ro` flag                          |
+| Diff budget enforcement     | confirmed | `src/lib/diff.ts` — `MAX_DIFF_CHARS`                       |
+| Noisy file exclusion        | confirmed | `src/lib/diff.ts` — `NOISY_EXCLUDE_PATHSPECS`              |
+| Configurable safety filters | confirmed | `src/lib/gemini/config.ts` — `GEMINI_HARM_BLOCK_THRESHOLD` |
+| npm publish provenance      | confirmed | `.github/workflows/release.yml` — `--provenance` flag      |
+
+## Development
+
+| Script       | Command              | Purpose                        |
+| ------------ | -------------------- | ------------------------------ |
+| `build`      | `npm run build`      | Compile TypeScript to `dist/`. |
+| `dev`        | `npm run dev`        | Watch mode (tsc --watch).      |
+| `start`      | `npm run start`      | Run built server.              |
+| `type-check` | `npm run type-check` | Type-check src and tests.      |
+| `lint`       | `npm run lint`       | ESLint.                        |
+| `format`     | `npm run format`     | Prettier.                      |
+| `test`       | `npm run test`       | Run tests (node:test).         |
+| `knip`       | `npm run knip`       | Dead-code detection.           |
+| `inspector`  | `npm run inspector`  | MCP Inspector.                 |
+
+### Debugging with MCP Inspector
+
+```bash
+npx @modelcontextprotocol/inspector npx -y @j0hanz/code-assistant@latest
+```
+
+## Build and Release
+
+- **Release workflow**: manual dispatch via GitHub Actions (`workflow_dispatch`) with version bump type (patch/minor/major) or custom version.
+- **npm**: published to `@j0hanz/code-assistant` with OIDC trusted publishing and provenance attestation.
+- **Docker**: multi-platform image (`linux/amd64`, `linux/arm64`) pushed to `ghcr.io/j0hanz/code-assistant`.
+- **MCP Registry**: published to [registry.modelcontextprotocol.io](https://registry.modelcontextprotocol.io) as `io.github.j0hanz/code-assistant`.
+
+### Docker Build
 
 ```bash
 docker build -t code-assistant .
 ```
 
-</details>
-
-## Tools
-
-> [!IMPORTANT]
-> Call `generate_diff` first (`mode: "unstaged"` or `"staged"`). All review tools read the cached server-side diff (`diff://current`) and do not accept a direct `diff` parameter.
-
-### `generate_diff`
-
-Generate and cache the current branch diff for downstream review tools.
-
-| Parameter | Type     | Required | Description                                        |
-| --------- | -------- | -------- | -------------------------------------------------- |
-| `mode`    | `string` | Yes      | `unstaged` (working tree) or `staged` (git index). |
-
-**Returns:** `diffRef`, `stats` (files, added, deleted), `generatedAt`, `mode`, `message`.
-
-### `analyze_pr_impact`
-
-Assess the impact and risk of cached pull request changes using the Flash model.
-
-| Parameter    | Type     | Required | Description                              |
-| ------------ | -------- | -------- | ---------------------------------------- |
-| `repository` | `string` | Yes      | Repository identifier (e.g. `org/repo`). |
-| `language`   | `string` | No       | Primary language hint.                   |
-
-**Returns:** `severity` (low/medium/high/critical), `categories[]`, `breakingChanges[]`, `affectedAreas[]`, `rollbackComplexity`, `summary`.
-
-### `generate_review_summary`
-
-Summarize a pull request diff and assess high-level risk using the Flash model.
-
-| Parameter    | Type     | Required | Description                              |
-| ------------ | -------- | -------- | ---------------------------------------- |
-| `repository` | `string` | Yes      | Repository identifier (e.g. `org/repo`). |
-| `language`   | `string` | No       | Primary language hint.                   |
-
-**Returns:** `summary`, `overallRisk` (low/medium/high), `keyChanges[]`, `recommendation`, `stats` (filesChanged, linesAdded, linesRemoved).
-
-### `generate_test_plan`
-
-Create a test plan covering the changes in the diff using the Flash model with thinking (8K token budget).
-
-| Parameter       | Type     | Required | Description                                 |
-| --------------- | -------- | -------- | ------------------------------------------- |
-| `repository`    | `string` | Yes      | Repository identifier (e.g. `org/repo`).    |
-| `language`      | `string` | No       | Primary language hint.                      |
-| `testFramework` | `string` | No       | Test framework (e.g. jest, vitest, pytest). |
-| `maxTestCases`  | `number` | No       | Maximum test cases to return (1-30).        |
-
-**Returns:** `summary`, `testCases[]` (name, type, file, description, pseudoCode, priority), `coverageSummary`.
-
-## Resources
-
-| URI                       | Type            | Description                |
-| ------------------------- | --------------- | -------------------------- |
-| `internal://instructions` | `text/markdown` | Server usage instructions. |
-
-## Prompts
-
-| Name           | Arguments           | Description                                         |
-| -------------- | ------------------- | --------------------------------------------------- |
-| `get-help`     | —                   | Return the server usage instructions.               |
-| `review-guide` | `tool`, `focusArea` | Guided workflow for a specific tool and focus area. |
-
-## Configuration
-
-### CLI Arguments
-
-| Option             | Description            | Env Var Equivalent |
-| ------------------ | ---------------------- | ------------------ |
-| `--model`, `-m`    | Override default model | `GEMINI_MODEL`     |
-| `--max-diff-chars` | Override max diff size | `MAX_DIFF_CHARS`   |
-
-### Environment Variables
-
-| Variable                        | Description                                          | Default      | Required |
-| ------------------------------- | ---------------------------------------------------- | ------------ | -------- |
-| `GEMINI_API_KEY`                | Gemini API key                                       | —            | Yes      |
-| `GOOGLE_API_KEY`                | Alternative API key (if `GEMINI_API_KEY` not set)    | —            | No       |
-| `GEMINI_MODEL`                  | Override default model selection                     | —            | No       |
-| `GEMINI_HARM_BLOCK_THRESHOLD`   | Safety threshold (BLOCK_NONE, BLOCK_ONLY_HIGH, etc.) | `BLOCK_NONE` | No       |
-| `MAX_DIFF_CHARS`                | Max chars for diff input                             | `120000`     | No       |
-| `MAX_CONCURRENT_CALLS`          | Max concurrent Gemini requests                       | `10`         | No       |
-| `MAX_CONCURRENT_BATCH_CALLS`    | Max concurrent inline batch requests                 | `2`          | No       |
-| `MAX_CONCURRENT_CALLS_WAIT_MS`  | Max wait time for a free Gemini slot                 | `2000`       | No       |
-| `MAX_SCHEMA_RETRY_ERROR_CHARS`  | Max chars from schema error injected into retry text | `1500`       | No       |
-| `GEMINI_BATCH_MODE`             | Request mode for Gemini calls (`off`, `inline`)      | `off`        | No       |
-| `GEMINI_BATCH_POLL_INTERVAL_MS` | Poll interval for batch job status                   | `2000`       | No       |
-| `GEMINI_BATCH_TIMEOUT_MS`       | Max wait for batch completion                        | `120000`     | No       |
-| `GEMINI_DIFF_CACHE_ENABLED`     | Enable Gemini context caching for large diffs        | `false`      | No       |
-| `GEMINI_DIFF_CACHE_TTL_S`       | TTL in seconds for cached diff content               | `3600`       | No       |
-
-### Models
-
-| Tool                      | Model                    | Thinking Level |
-| ------------------------- | ------------------------ | -------------- |
-| `analyze_pr_impact`       | `gemini-3-flash-preview` | `minimal`      |
-| `generate_review_summary` | `gemini-3-flash-preview` | `minimal`      |
-| `generate_test_plan`      | `gemini-3-flash-preview` | `medium`       |
-
-## Workflows
-
-### Quick PR Triage
-
-1. Call `analyze_pr_impact` to get severity and category breakdown.
-2. If low/medium — call `generate_review_summary` for a quick digest.
-3. If high/critical — proceed to deep inspection.
-
-### Testing
-
-1. Call `generate_test_plan` to create a verification strategy.
-2. Implement tests based on returned test cases and coverage summary.
-
-## Development
-
-```bash
-npm ci            # Install dependencies
-npm run dev       # TypeScript watch mode
-npm run dev:run   # Run built server with .env and --watch
-```
-
-| Script               | Command                             | Purpose                        |
-| -------------------- | ----------------------------------- | ------------------------------ |
-| `npm run build`      | `node scripts/tasks.mjs build`      | Clean, compile, validate, copy |
-| `npm test`           | `node scripts/tasks.mjs test`       | Build + run all tests          |
-| `npm run test:fast`  | `node --test --import tsx/esm ...`  | Run tests without build        |
-| `npm run lint`       | `eslint .`                          | Lint all files                 |
-| `npm run lint:fix`   | `eslint . --fix`                    | Lint and auto-fix              |
-| `npm run format`     | `prettier --write .`                | Format all files               |
-| `npm run type-check` | `node scripts/tasks.mjs type-check` | Type-check without emitting    |
-| `npm run inspector`  | Build + launch MCP Inspector        | Debug with MCP Inspector       |
-
-### Debugging with MCP Inspector
-
-```bash
-npx @modelcontextprotocol/inspector node dist/index.js
-```
-
-## Build & Release
-
-Releases are triggered via GitHub Actions `workflow_dispatch` with version bump selection (patch/minor/major/custom).
-
-The pipeline runs lint, type-check, test, and build, then publishes to three targets in parallel:
-
-- **npm** — `@j0hanz/code-assistant` with OIDC trusted publishing and provenance
-- **Docker** — `ghcr.io/j0hanz/code-assistant` (linux/amd64, linux/arm64)
-- **MCP Registry** — `io.github.j0hanz/code-assistant`
-
 ## Troubleshooting
 
-| Issue                                      | Solution                                                                             |
-| ------------------------------------------ | ------------------------------------------------------------------------------------ |
-| `Missing GEMINI_API_KEY or GOOGLE_API_KEY` | Set one of the API key env vars in your MCP client config.                           |
-| `E_INPUT_TOO_LARGE`                        | Diff exceeds budget. Split into smaller diffs.                                       |
-| `Gemini request timed out`                 | Deep analysis tasks may take 60-120s. Increase your client timeout.                  |
-| `Too many concurrent Gemini calls`         | Reduce parallel tool calls or increase `MAX_CONCURRENT_CALLS`.                       |
-| No tool output visible                     | Ensure your MCP client is not swallowing `stderr` — the server uses stdio transport. |
+- **Missing API key**: set `GEMINI_API_KEY` or `GOOGLE_API_KEY` in your environment or client config.
+- **Diff too large**: increase `MAX_DIFF_CHARS` or use `--max-diff-chars` flag. Lock files and build artifacts are excluded automatically.
+- **Inspector not connecting**: ensure the server builds cleanly with `npm run build` before running the inspector.
+- **`E_NO_DIFF` error**: call `generate_diff` before any diff-based analysis tool.
+- **`E_NO_FILE` error**: call `load_file` before `refactor_code`, `ask_about_code`, or `verify_logic`.
 
-## License
+## Contributing and License
 
-MIT
+- License: [MIT](https://opensource.org/licenses/MIT)
+- Repository: [github.com/j0hanz/code-assistant](https://github.com/j0hanz/code-assistant)
