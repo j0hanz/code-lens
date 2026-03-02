@@ -172,6 +172,38 @@ const QUESTION_PARAM = createParam(
   'Question about the loaded file.'
 );
 
+const QUERY_PARAM = createParam(
+  'query',
+  'string',
+  true,
+  '1-1000 chars',
+  'Search query.'
+);
+
+const QUERY_REPO_PARAM = createParam(
+  'query',
+  'string',
+  true,
+  '1-2000 chars',
+  'Natural-language question about the repository codebase.'
+);
+
+const ROOT_PATH_PARAM = createParam(
+  'rootPath',
+  'string',
+  true,
+  '1-500 chars',
+  'Absolute path to the repository root directory.'
+);
+
+const DISPLAY_NAME_PARAM = createParam(
+  'displayName',
+  'string',
+  false,
+  '1-100 chars',
+  'Display name for the search store. Default: directory name.'
+);
+
 export const TOOL_CONTRACTS = [
   {
     name: 'generate_diff',
@@ -379,7 +411,7 @@ export const TOOL_CONTRACTS = [
     model: FLASH_MODEL,
     timeoutMs: DEFAULT_TIMEOUT_FLASH_MS,
     maxOutputTokens: 0,
-    params: cloneParams(QUESTION_PARAM),
+    params: cloneParams(QUERY_PARAM),
     outputShape: '{ok, result: {text, groundingMetadata}}',
     gotchas: [
       'Uses Gemini grounding — results depend on Google Search availability.',
@@ -396,7 +428,7 @@ export const TOOL_CONTRACTS = [
     model: 'none',
     timeoutMs: 0,
     maxOutputTokens: 0,
-    params: cloneParams(FILE_PATH_PARAM),
+    params: cloneParams(ROOT_PATH_PARAM, DISPLAY_NAME_PARAM),
     outputShape:
       '{ok, result: {storeName, displayName, filesUploaded, filesSkipped, message}}',
     gotchas: [
@@ -416,7 +448,7 @@ export const TOOL_CONTRACTS = [
     maxOutputTokens: DEFAULT_MAX_OUTPUT_TOKENS,
     temperature: ANALYSIS_TEMPERATURE,
     deterministicJson: true,
-    params: cloneParams(QUESTION_PARAM),
+    params: cloneParams(QUERY_REPO_PARAM, LANGUAGE_PARAM),
     outputShape: '{ok, result: {answer, references[]}}',
     gotchas: [
       'Requires index_repository first.',

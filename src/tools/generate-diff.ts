@@ -169,9 +169,10 @@ function createSuccessResponse(
 ): ReturnType<typeof createToolResponse> {
   const parsedFiles = parseDiffFiles(diff);
   const stats = computeDiffStatsFromFiles(parsedFiles);
-  const generatedAt = new Date().toISOString();
+  const generatedAtMs = Date.now();
+  const generatedAt = new Date(generatedAtMs).toISOString();
 
-  storeDiff({ diff, parsedFiles, stats, generatedAt, mode });
+  storeDiff({ diff, parsedFiles, stats, generatedAt, generatedAtMs, mode });
 
   const summary = `Diff cached: ${stats.files} files (+${stats.added}, -${stats.deleted})`;
   return createToolResponse(
@@ -205,7 +206,7 @@ export function registerGenerateDiffTool(server: McpServer): void {
       }),
       outputSchema: DefaultOutputSchema,
       annotations: {
-        readOnlyHint: true,
+        readOnlyHint: false,
         idempotentHint: true,
         openWorldHint: false,
         destructiveHint: false,

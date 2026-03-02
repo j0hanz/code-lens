@@ -102,7 +102,8 @@ export function registerWebSearchTool(server: McpServer): void {
     progressContext: (input) => input.query.slice(0, 60),
     formatOutput: (result) => result.text.slice(0, 200),
     buildPrompt: (input) => ({
-      systemInstruction: '',
+      systemInstruction:
+        'You are a technical research assistant. Return factual, concise answers grounded in search results. Cite sources when available.',
       prompt: input.query,
     }),
     customGenerate: async (_promptParts, _ctx, opts) => {

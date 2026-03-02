@@ -72,7 +72,7 @@ export function registerVerifyLogicTool(server: McpServer): void {
     annotations: {
       readOnlyHint: true,
       idempotentHint: true,
-      openWorldHint: false,
+      openWorldHint: true,
       destructiveHint: false,
     },
     progressContext: (input) => input.question.slice(0, 60),

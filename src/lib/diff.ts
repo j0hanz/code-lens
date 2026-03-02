@@ -294,6 +294,8 @@ export interface DiffSlot {
   parsedFiles: readonly ParsedFile[];
   stats: DiffStats;
   generatedAt: string;
+  /** Numeric epoch ms cached at creation to avoid repeated Date parsing. */
+  generatedAtMs: number;
   mode: string;
 }
 
@@ -341,7 +343,7 @@ export function getDiff(key: string = process.cwd()): DiffSlot | undefined {
     return undefined;
   }
 
-  const age = Date.now() - new Date(slot.generatedAt).getTime();
+  const age = Date.now() - slot.generatedAtMs;
   if (age > diffCacheTtlMs.get()) {
     diffSlots.delete(key);
     notifyDiffUpdated();

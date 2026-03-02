@@ -46,6 +46,27 @@ describe('errors', () => {
     );
   });
 
+  it('rejects false-positive substring matches in upstream pattern', () => {
+    assert.equal(
+      RETRYABLE_UPSTREAM_ERROR_PATTERN.test('preset configuration loaded'),
+      false
+    );
+    assert.equal(
+      RETRYABLE_UPSTREAM_ERROR_PATTERN.test('password reset failed'),
+      false
+    );
+    assert.equal(
+      RETRYABLE_UPSTREAM_ERROR_PATTERN.test('version 5.0.0 released'),
+      false
+    );
+    // But real transient errors still match
+    assert.equal(
+      RETRYABLE_UPSTREAM_ERROR_PATTERN.test('connection reset by peer'),
+      true
+    );
+    assert.equal(RETRYABLE_UPSTREAM_ERROR_PATTERN.test('ECONNREFUSED'), true);
+  });
+
   it('classifies busy errors with kind=busy and retryable=true', () => {
     const meta = classifyErrorMeta(
       new Error('too many concurrent requests'),

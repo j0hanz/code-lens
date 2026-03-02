@@ -77,6 +77,8 @@ export interface PromptParts {
 export interface ToolExecutionContext {
   readonly diffSlot: DiffSlot | undefined;
   readonly fileSlot: FileSlot | undefined;
+  /** Snapshotted Gemini context cache name for diff-dependent tools. */
+  readonly diffCacheSlotName: string | undefined;
 }
 
 const DEFAULT_SCHEMA_RETRIES = 1;
@@ -374,7 +376,7 @@ function appendStaleDiffWarning(
     return textContent;
   }
 
-  const ageMs = Date.now() - new Date(diffSlot.generatedAt).getTime();
+  const ageMs = Date.now() - diffSlot.generatedAtMs;
   if (ageMs <= diffStaleWarningMs.get()) {
     return textContent;
   }
@@ -497,6 +499,7 @@ export class ToolExecutionRunner<
   private responseSchema: Record<string, unknown>;
   private readonly onLog: (level: string, data: unknown) => Promise<void>;
   private reporter: RunReporter;
+  private executionCtx: ToolExecutionContext | undefined;
 
   constructor(
     private readonly config: StructuredToolTaskConfig<TInput, TResult, TFinal>,
@@ -579,10 +582,8 @@ export class ToolExecutionRunner<
     prompt: string,
     attempt: number
   ): Promise<TResult> {
-    // Resolve Gemini context cache for diff-dependent tools (best-effort).
-    const cachedContent = this.config.requiresDiff
-      ? getDiffCacheSlot()?.cacheName
-      : undefined;
+    // Use snapshotted cache name from context instead of reading global state.
+    const cachedContent = this.executionCtx?.diffCacheSlotName;
 
     const raw = await generateStructuredJson(
       createGenerationRequest(
@@ -650,9 +651,13 @@ export class ToolExecutionRunner<
   }
 
   private createExecutionContext(): ToolExecutionContext {
+    const diffSlot = this.hasSnapshot ? this.diffSlotSnapshot : getDiff();
     return {
-      diffSlot: this.hasSnapshot ? this.diffSlotSnapshot : getDiff(),
+      diffSlot,
       fileSlot: getFile(),
+      diffCacheSlotName: this.config.requiresDiff
+        ? getDiffCacheSlot()?.cacheName
+        : undefined,
     };
   }
 
@@ -736,6 +741,7 @@ export class ToolExecutionRunner<
       this.reporter.updateContext(newContext);
 
       const ctx = this.createExecutionContext();
+      this.executionCtx = ctx;
 
       await this.reporter.reportStep(
         STEP_VALIDATING,
@@ -810,9 +816,12 @@ function createTaskStatusReporter(
   extra: CreateTaskRequestHandlerExtra,
   extendedStore: ExtendedRequestTaskStore
 ): TaskStatusReporter {
+  const hasUpdateStatus = typeof extendedStore.updateTaskStatus === 'function';
   return {
     updateStatus: async (message) => {
-      await extendedStore.updateTaskStatus(taskId, 'working', message);
+      if (hasUpdateStatus) {
+        await extendedStore.updateTaskStatus(taskId, 'working', message);
+      }
     },
     storeResult: async (status, result) => {
       await extra.taskStore.storeTaskResult(taskId, status, result);
@@ -840,11 +849,13 @@ function runToolTaskInBackground<
     const isCancelled = (signal?.aborted ?? false) || isAbort;
 
     try {
-      await extendedStore.updateTaskStatus(
-        taskId,
-        isCancelled ? 'cancelled' : 'failed',
-        getErrorMessage(error)
-      );
+      if (typeof extendedStore.updateTaskStatus === 'function') {
+        await extendedStore.updateTaskStatus(
+          taskId,
+          isCancelled ? 'cancelled' : 'failed',
+          getErrorMessage(error)
+        );
+      }
     } catch {
       // Status update failed — nothing more we can do
     }

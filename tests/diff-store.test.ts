@@ -17,6 +17,7 @@ function createSlot(generatedAt: string) {
     parsedFiles: [],
     stats: { files: 1, added: 1, deleted: 1 },
     generatedAt,
+    generatedAtMs: new Date(generatedAt).getTime(),
     mode: 'unstaged',
   };
 }
