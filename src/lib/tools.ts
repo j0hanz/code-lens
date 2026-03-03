@@ -117,7 +117,7 @@ function buildToolAnnotations(
     return {
       readOnlyHint: true,
       idempotentHint: true,
-      openWorldHint: true,
+      openWorldHint: false,
     };
   }
 
@@ -126,7 +126,7 @@ function buildToolAnnotations(
   return {
     readOnlyHint: !destructiveHint,
     idempotentHint: !destructiveHint,
-    openWorldHint: true,
+    openWorldHint: false,
     ...annotationOverrides,
   };
 }
@@ -798,6 +798,8 @@ export class ToolExecutionRunner<
       await this.reporter.reportStep(STEP_FINALIZING, 'finalizing');
 
       const finalResult = this.applyResultTransform(inputRecord, parsed, ctx);
+      this.throwIfAborted();
+      this.config.resultSchema.parse(finalResult);
       const textContent = this.formatResultText(finalResult, ctx);
       return await this.finalizeSuccessfulRun(finalResult, textContent);
     } catch (error: unknown) {

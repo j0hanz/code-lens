@@ -6,12 +6,21 @@ import type { ErrorMeta } from './tools.js';
 
 // --- API key sanitization ---
 
-/** Matches Google AI API keys (AIzaSy...) to prevent accidental leakage in error messages. */
-const API_KEY_PATTERN = /AIza[0-9A-Za-z_-]{35}/g;
+/** Patterns matching sensitive credentials to prevent accidental leakage in error messages. */
+const SENSITIVE_PATTERNS: RegExp[] = [
+  /AIza[0-9A-Za-z_-]{35}/g,
+  /sk-[0-9A-Za-z_-]{20,}/g,
+  /Bearer\s+[^\s"']{20,}/gi,
+];
 
-/** Remove API keys from a string before it reaches clients. */
+/** Remove sensitive credentials from a string before it reaches clients. */
 export function sanitizeErrorMessage(message: string): string {
-  return message.replace(API_KEY_PATTERN, '[REDACTED]');
+  let sanitized = message;
+  for (const pattern of SENSITIVE_PATTERNS) {
+    pattern.lastIndex = 0;
+    sanitized = sanitized.replace(pattern, '[REDACTED]');
+  }
+  return sanitized;
 }
 
 /** Matches transient upstream provider failures that are typically safe to retry. */

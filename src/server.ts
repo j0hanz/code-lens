@@ -75,7 +75,12 @@ function loadVersion(): string {
   return parsePackageVersion(packageJsonText, packageJsonPath);
 }
 
-const SERVER_VERSION = loadVersion();
+let SERVER_VERSION: string;
+try {
+  SERVER_VERSION = loadVersion();
+} catch {
+  SERVER_VERSION = '0.0.0-dev';
+}
 
 const SERVER_INSTRUCTIONS = buildServerInstructions();
 
@@ -112,8 +117,11 @@ export function createServer(): ServerHandle {
   registerServerCapabilities(server);
 
   const shutdown = async (): Promise<void> => {
-    await server.close();
-    taskStore.cleanup();
+    try {
+      await server.close();
+    } finally {
+      taskStore.cleanup();
+    }
   };
 
   return { server, shutdown };

@@ -137,6 +137,9 @@ export function normalizeProgressContext(context: string | undefined): string {
     return compact;
   }
 
+  console.error(
+    `[warn] Progress context truncated from ${String(compact.length)} to 80 chars`
+  );
   return `${compact.slice(0, 77)}...`;
 }
 

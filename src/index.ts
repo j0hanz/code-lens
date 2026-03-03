@@ -68,6 +68,7 @@ async function shutdown(server: ServerInstance): Promise<void> {
   }
 
   shuttingDown = true;
+  setTimeout(() => process.exit(1), 15_000).unref();
   await server.shutdown();
   process.exit(0);
 }

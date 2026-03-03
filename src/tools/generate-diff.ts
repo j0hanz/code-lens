@@ -216,7 +216,7 @@ export function registerGenerateDiffTool(server: McpServer): void {
       }),
       outputSchema: createToolOutputSchema(GenerateDiffResultSchema),
       annotations: {
-        readOnlyHint: true,
+        readOnlyHint: false,
         idempotentHint: true,
         openWorldHint: false,
         destructiveHint: false,

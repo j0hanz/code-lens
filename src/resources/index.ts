@@ -129,7 +129,12 @@ function registerToolInfoResources(server: McpServer): void {
   server.registerResource(
     'tool-info',
     new ResourceTemplate(TOOL_INFO_RESOURCE_URI, {
-      list: undefined,
+      list: () => ({
+        resources: toolNames.map((name) => ({
+          uri: `internal://tool-info/${name}`,
+          name: `tool-info:${name}`,
+        })),
+      }),
       complete: {
         toolName: (value) => completeByPrefix(toolNames, value),
       },
