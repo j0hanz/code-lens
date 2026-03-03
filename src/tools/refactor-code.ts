@@ -39,7 +39,7 @@ Focus: complexity and duplication. Only report naming/grouping if high-impact.
 </constraints>
 
 <output>
-- Return strict JSON only. No markdown, no prose outside JSON, no extra keys.
+Return strict JSON matching the schema. No markdown, prose outside JSON, or extra keys.
 </output>`;
 }
 
@@ -97,7 +97,7 @@ export function registerRefactorCodeTool(server: McpServer): void {
 
       return {
         systemInstruction: buildSystemInstruction(maxSuggestions),
-        prompt: `Language: ${language}\nFile: ${file.filePath}\n\n${file.content}`,
+        prompt: `Language: ${language}\nFile: ${file.filePath}\n\n<source>\n${file.content}\n</source>\n\nAnalyze this file for refactoring opportunities.`,
       };
     },
     transformResult: (_input, result, ctx) => {

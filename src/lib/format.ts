@@ -27,7 +27,7 @@ export function buildLanguageDiffPrompt(
   diff: string,
   conclusion: string
 ): string {
-  return `${formatLanguageSegment(language)}\nDiff:\n${diff}\n\n${conclusion}`.trimStart();
+  return `${formatLanguageSegment(language)}\n<diff>\n${diff}\n</diff>\n\n${conclusion}`.trimStart();
 }
 
 export function formatCountLabel(

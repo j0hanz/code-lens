@@ -26,8 +26,11 @@ Analyze the time and space complexity of the code changes:
 <constraints>
 - Focus on the changed code paths.
 - Flag degradation only if complexity class worsens (e.g., O(n) -> O(n^2)).
-- Return valid JSON matching the schema.
 </constraints>
+
+<output>
+Return strict JSON matching the schema. No markdown, prose outside JSON, or extra keys.
+</output>
 `;
 const TOOL_CONTRACT = requireToolContract('analyze_time_space_complexity');
 

@@ -21,12 +21,14 @@ Answer the user's question about the provided source file accurately and concise
 </task>
 
 <constraints>
-- Answer based solely on the provided file content.
+- Answer based solely on the provided file content. Do not introduce external information.
 - Reference specific functions, classes, variables, or line ranges when relevant.
 - If the question cannot be answered from the file alone, state that clearly.
-- Do not speculate about code outside the provided file.
-- Return strict JSON only.
 </constraints>
+
+<output>
+Return strict JSON matching the schema. No markdown, prose outside JSON, or extra keys.
+</output>
 `;
 
 const TOOL_CONTRACT = requireToolContract('ask_about_code');
@@ -66,7 +68,7 @@ export function registerAskTool(server: McpServer): void {
 
       return {
         systemInstruction: SYSTEM_INSTRUCTION,
-        prompt: `Language: ${language}\nFile: ${file.filePath}\n\nSource code:\n${file.content}\n\nQuestion: ${input.question}`,
+        prompt: `Language: ${language}\nFile: ${file.filePath}\n\n<source>\n${file.content}\n</source>\n\nQuestion: ${input.question}`,
       };
     },
     transformResult: (_input, result, ctx) => {

@@ -31,10 +31,14 @@ Summarize the pull request based on the diff:
 </task>
 
 <constraints>
-- Focus on logic and behavior; ignore style, formatting, and typos.
+- Focus on logic and behavior changes.
 - Be concise and actionable.
-- Return valid JSON matching the schema.
+- Ignore style, formatting, and typos unless they affect logic.
 </constraints>
+
+<output>
+Return strict JSON matching the schema. No markdown, prose outside JSON, or extra keys.
+</output>
 `;
 export function registerGenerateReviewSummaryTool(server: McpServer): void {
   registerStructuredToolTask(server, {
@@ -88,10 +92,11 @@ export function registerGenerateReviewSummaryTool(server: McpServer): void {
 Repository: ${input.repository}${languageSegment}
 Stats: ${stats.files} files, +${stats.added}, -${stats.deleted}
 
-Diff:
+<diff>
 ${diff}
+</diff>
 
-Based on the diff and stats above, summarize the PR and provide a merge recommendation.
+Summarize the PR and provide a merge recommendation based on the diff above.
 `,
       };
     },

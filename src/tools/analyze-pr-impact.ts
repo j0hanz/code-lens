@@ -26,10 +26,13 @@ Analyze the unified diff to assess:
 </task>
 
 <constraints>
-- Base analysis ONLY on the provided diff. No external inference.
-- Ignore formatting/style changes unless they affect logic.
-- Return valid JSON matching the schema.
+- Base analysis ONLY on the provided diff. Do not introduce external information.
+- Ignore formatting, style, and whitespace changes unless they affect logic or behavior.
 </constraints>
+
+<output>
+Return strict JSON matching the schema. No markdown, prose outside JSON, or extra keys.
+</output>
 `;
 const TOOL_CONTRACT = requireToolContract('analyze_pr_impact');
 
@@ -91,10 +94,11 @@ Change Stats: ${stats.files} files, +${stats.added} lines, -${stats.deleted} lin
 Changed Files:
 ${fileSummary}
 
-Diff:
+<diff>
 ${diff}
+</diff>
 
-Based on the diff and change stats above, analyze the PR impact.
+Analyze the PR impact based on the diff and change stats above.
 `,
       };
     },

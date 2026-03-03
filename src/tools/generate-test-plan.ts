@@ -26,8 +26,11 @@ Generate a prioritized test plan for the provided diff:
 <constraints>
 - Focus on observable behavior changes.
 - Ignore internal refactors that do not affect contract.
-- Return valid JSON matching the schema.
 </constraints>
+
+<output>
+Return strict JSON matching the schema. No markdown, prose outside JSON, or extra keys.
+</output>
 `;
 const TOOL_CONTRACT = requireToolContract('generate_test_plan');
 
@@ -86,10 +89,11 @@ Repository: ${input.repository}${optionalLines}
 Stats: ${stats.files} files, +${stats.added}, -${stats.deleted}
 Changed Files: ${paths.join(', ')}
 
-Diff:
+<diff>
 ${diff}
+</diff>
 
-Based on the diff and stats above, generate an actionable test plan.
+Generate an actionable test plan based on the diff and stats above.
 `,
       };
     },

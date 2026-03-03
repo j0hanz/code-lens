@@ -36,8 +36,7 @@ Analyze one source file for structural code smells: dead_code, magic_number, lon
 </constraints>
 
 <output>
-- Return strict JSON only.
-- Do not add markdown, prose outside JSON, or extra keys.
+Return strict JSON matching the schema. No markdown, prose outside JSON, or extra keys.
 </output>
 `;
 
@@ -101,7 +100,7 @@ export function registerDetectCodeSmellsTool(server: McpServer): void {
 
       return {
         systemInstruction: SYSTEM_INSTRUCTION,
-        prompt: `Language: ${language}\nFile: ${file.filePath}\n\nSource code:\n${file.content}\n\nDetect structural code smells in this file.`,
+        prompt: `Language: ${language}\nFile: ${file.filePath}\n\n<source>\n${file.content}\n</source>\n\nDetect structural code smells in this file.`,
       };
     },
     transformResult: (_input, result, ctx) => {

@@ -34,11 +34,11 @@ Execute the code and report the results.
 </task>
 
 <constraints>
-- Base verification solely on the provided source file content.
+- Base verification solely on the provided source file content. Do not introduce external information.
 - Write clear, self-contained Python test code with assertions.
 - If the source language is not Python, translate the relevant logic into Python for verification.
 - Print results and use assertions to confirm correctness.
-- If verification is not possible from the file alone, state that clearly in your response text.
+- If verification is not possible from the file alone, state that clearly.
 </constraints>
 `;
 
@@ -108,7 +108,7 @@ export function registerVerifyLogicTool(server: McpServer): void {
 
       return {
         systemInstruction: SYSTEM_INSTRUCTION,
-        prompt: `Language: ${language}\nFile: ${filePath}\n\nSource code:\n${content}\n\nVerification request: ${input.question}`,
+        prompt: `Language: ${language}\nFile: ${filePath}\n\n<source>\n${content}\n</source>\n\nVerification request: ${input.question}`,
       };
     },
     transformResult: (input, result, ctx) => {

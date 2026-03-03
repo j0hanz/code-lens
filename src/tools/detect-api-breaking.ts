@@ -19,14 +19,17 @@ You are a strict guardian of public interfaces and contracts.
 <task>
 Detect breaking changes in public APIs, interfaces, or schemas:
 - Identify changes that require consumer code modification.
-- classify the nature, impact, and mitigation for each break.
+- Classify the nature, impact, and mitigation for each break.
 </task>
 
 <constraints>
 - Definition: Breaking change = backwards-incompatible modification.
 - Ignore internal/private APIs unless exported.
-- Return valid JSON matching the schema.
 </constraints>
+
+<output>
+Return strict JSON matching the schema. No markdown, prose outside JSON, or extra keys.
+</output>
 `;
 const TOOL_CONTRACT = requireToolContract('detect_api_breaking_changes');
 
