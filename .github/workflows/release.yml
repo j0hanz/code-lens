@@ -113,7 +113,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ steps.ver.outputs.version }}
-        run: gh release create "v$VERSION" --title "v$VERSION" --generate-notes
+        run: gh release create "v$VERSION" --title "v$VERSION" --generate-notes --clobber
 
   # ──────────────────────────────────────────────
   # 2. Publish to npm (runs in parallel with Docker)
