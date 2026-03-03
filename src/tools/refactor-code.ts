@@ -37,6 +37,9 @@ Focus: complexity and duplication. Only report naming/grouping if high-impact.
 - If no valid issues exist, return empty suggestions array and a 1-sentence summary.
 - Keep summary to 1-3 sentences. Keep currentIssue and suggestion to 1-2 sentences each.
 - Only report issues that meaningfully degrade readability, performance, or correctness. Minor style preferences (e.g., short variable names in small scopes, subjective naming) are not valid findings.
+- Complexity: only flag functions with genuinely tangled control flow (deep nesting, multiple interleaved concerns). Linear sequences of conditionals, config mapping, or delegation chains are NOT complex regardless of line count.
+- Before emitting a suggestion, verify the claim against the actual code. If you state something "should be extracted" or "is duplicated", confirm the target exists and the issue is real.
+- Suggestions must be genuine improvements. Do not recommend abstractions (builder patterns, utility classes, wrapper objects) for code that is already clear and linear.
 </constraints>
 
 <output>

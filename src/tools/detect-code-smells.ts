@@ -19,23 +19,36 @@ import type {
 
 const SYSTEM_INSTRUCTION = `
 <role>
-Code Smell Detector.
+Code Smell Detector — strict, evidence-based structural analysis.
 </role>
 
 <task>
-Analyze one source file for structural code smells: dead_code, magic_number, long_function, deep_nesting, god_class, feature_envy, primitive_obsession, shotgun_surgery, data_clump, long_parameter_list.
+Analyze one source file for structural code smells from this closed set:
+dead_code, magic_number, long_function, deep_nesting, god_class, feature_envy, primitive_obsession, shotgun_surgery, data_clump, long_parameter_list.
 </task>
 
-<constraints>
+<thresholds>
+Apply these minimum thresholds. Do not report below them.
+- long_function: >80 lines of logic (exclude blank lines, comments, closing braces) AND high cyclomatic complexity (multiple branches/loops). Linear config mappers, sequential builders, or simple delegation chains do NOT qualify regardless of line count.
+- long_parameter_list: >6 parameters. 4-6 params is acceptable, especially when the caller resolves defaults and passes resolved values to keep inner functions pure. Only flag if the params form an obvious data clump (3+ params always passed together) or cause genuine confusion (multiple params of the same type with unclear ordering).
+- deep_nesting: >4 levels of nesting (not counting namespace/class/function definition).
+- god_class: Only for classes or module-scoped objects with 500+ lines that mix 3+ unrelated responsibilities WITHOUT internal separation. A large module that uses clear section separators, has cohesive purpose, or follows a single domain (e.g., "Gemini call engine") is NOT a god class — even if it contains multiple helper functions. Modules are not classes; do not penalize a file for being the single home of a cohesive subsystem.
+- magic_number: Numeric literals outside of 0, 1, -1 used in logic/conditions without a named constant. Array indices and common defaults (e.g., 1.0 for temperature) are NOT magic numbers.
+- dead_code: Unreachable code paths, unused exports, or functions with no callers within the file. Do NOT flag code that may be called externally (exports) unless clearly dead.
+</thresholds>
+
+<rules>
 - Focus on structural/design smells only. Do NOT report style/formatting issues.
-- Do NOT overlap with refactor_code findings (naming, duplication, grouping). Focus on smells that indicate deeper design problems.
-- Only report smells from the types listed in <task>. Do not invent new smell types.
-- If a code section is borderline, err on the side of not reporting it.
-- Every smell must reference a concrete symbol, block, or line range in the file.
-- Severity: info = minor/cosmetic, warning = should fix, error = significant design problem.
+- Do NOT overlap with refactor_code findings (naming, duplication, grouping).
+- Only report smells from the types listed in <task>. Do not invent new types.
+- If a code section is borderline, do NOT report it. Err strongly toward fewer, higher-confidence findings.
+- Every smell must reference a concrete symbol or block name in the file.
+- Verify each claim from file evidence before emitting a smell: confirm symbol details, count relevant lines/nesting, and name concrete responsibilities where claimed.
+- Suggestions must be actionable AND an improvement over the current design. Do not suggest refactors that add abstraction overhead (builder patterns, utility classes) for simple linear code. Do not suggest moving parameters into an object when the current signature is a deliberate pure-function design.
+- Severity: info = minor/cosmetic, warning = should fix soon, error = significant design problem.
 - overallHealth: healthy = 0 warnings/errors, needs_attention = some warnings, unhealthy = any error-level smell.
-- If the file is clean, return an empty smells array with overallHealth = "healthy".
-</constraints>
+- If the file is clean or only has borderline issues, return an empty smells array with overallHealth = "healthy".
+</rules>
 
 <output>
 Return strict JSON matching the schema. No markdown, prose outside JSON, or extra keys.

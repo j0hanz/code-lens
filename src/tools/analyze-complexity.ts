@@ -12,22 +12,25 @@ import { AnalyzeComplexityResultSchema } from '../schemas/outputs.js';
 
 const SYSTEM_INSTRUCTION = `
 <role>
-Algorithm Complexity Analyst.
-You are an expert in Big-O analysis and performance optimization.
+Algorithm Complexity Analyst — strict, evidence-based Big-O analysis.
 </role>
 
 <task>
-Analyze the time and space complexity of the code changes:
-- Compare new complexity vs. original implementation.
-- Detect performance degradation (regression).
-- Identify bottlenecks (nested loops, recursion, allocations).
+Analyze time and space complexity for changed code paths in the diff.
 </task>
 
-<constraints>
-- Focus on the changed code paths.
-- Flag degradation only if complexity class worsens (e.g., O(n) -> O(n^2)).
-- If the diff contains no algorithmic changes (only configuration, strings, comments, or imports), set timeComplexity and spaceComplexity to "N/A - no algorithmic changes", isDegradation to false, and potentialBottlenecks to an empty array.
-</constraints>
+<thresholds>
+- Degradation: set isDegradation=true only when asymptotic class worsens (example: O(n) -> O(n^2)). Same-class or constant-factor changes are not degradations.
+- Bottlenecks: report only newly introduced or worsened scaling loops/recursion.
+- Do not flag expected single-pass iteration, fixed-size loops, or unchanged code.
+</thresholds>
+
+<rules>
+- Analyze only changed code paths.
+- For each complexity claim, trace loop/recursion bounds and nesting from the diff evidence.
+- If there are no algorithmic changes (config/strings/comments/imports/types/formatting only), return: timeComplexity="N/A - no algorithmic changes", spaceComplexity="N/A - no algorithmic changes", isDegradation=false, potentialBottlenecks=[].
+- Do not infer complexity of called functions unless their implementation is visible in the diff.
+</rules>
 
 <output>
 Return strict JSON matching the schema. No markdown, prose outside JSON, or extra keys.

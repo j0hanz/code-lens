@@ -69,19 +69,78 @@ function formatConcurrencyLimitErrorMessage(
   return `Too many concurrent Gemini calls (limit: ${formatUsNumber(limit)}; waited ${formatUsNumber(waitLimitMs)}ms).`;
 }
 
-const callLimiter = new ConcurrencyLimiter(
-  () => maxConcurrentCallsConfig.get(),
-  () => concurrencyWaitMsConfig.get(),
-  (limit, ms) => formatConcurrencyLimitErrorMessage(limit, ms),
-  () => CANCELLED_REQUEST_MESSAGE
+function createConcurrencyLimiter(getLimit: () => number): ConcurrencyLimiter {
+  return new ConcurrencyLimiter(
+    getLimit,
+    () => concurrencyWaitMsConfig.get(),
+    formatConcurrencyLimitErrorMessage,
+    () => CANCELLED_REQUEST_MESSAGE
+  );
+}
+
+const callLimiter = createConcurrencyLimiter(() =>
+  maxConcurrentCallsConfig.get()
 );
 
-const batchCallLimiter = new ConcurrencyLimiter(
-  () => maxConcurrentBatchCallsConfig.get(),
-  () => concurrencyWaitMsConfig.get(),
-  (limit, ms) => formatConcurrencyLimitErrorMessage(limit, ms),
-  () => CANCELLED_REQUEST_MESSAGE
+const batchCallLimiter = createConcurrencyLimiter(() =>
+  maxConcurrentBatchCallsConfig.get()
 );
+
+// ---------------------------------------------------------------------------
+// Signal / sleep helpers
+// ---------------------------------------------------------------------------
+
+function combineSignals(
+  signal: AbortSignal,
+  requestSignal?: AbortSignal
+): AbortSignal {
+  return requestSignal ? AbortSignal.any([signal, requestSignal]) : signal;
+}
+
+function throwIfRequestCancelled(requestSignal?: AbortSignal): void {
+  if (requestSignal?.aborted) {
+    throw new Error(CANCELLED_REQUEST_MESSAGE);
+  }
+}
+
+function getSleepOptions(signal?: AbortSignal): Parameters<typeof sleep>[2] {
+  return signal ? { ...SLEEP_UNREF_OPTIONS, signal } : SLEEP_UNREF_OPTIONS;
+}
+
+// ---------------------------------------------------------------------------
+// Response parsing
+// ---------------------------------------------------------------------------
+
+function parseStructuredResponse(responseText: string | undefined): unknown {
+  if (!responseText) {
+    throw new Error('Gemini returned an empty response body.');
+  }
+
+  try {
+    return JSON.parse(responseText);
+  } catch {
+    // fast-path failed; try extracting from markdown block
+  }
+
+  const jsonMatch = JSON_CODE_BLOCK_PATTERN.exec(responseText);
+  const jsonText = jsonMatch?.[1] ?? responseText;
+
+  try {
+    return JSON.parse(jsonText);
+  } catch (error: unknown) {
+    throw new Error(`Model produced invalid JSON: ${getErrorMessage(error)}`, {
+      cause: error,
+    });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Error message formatters
+// ---------------------------------------------------------------------------
+
+function formatTimeoutErrorMessage(timeoutMs: number): string {
+  return `Gemini request timed out after ${formatUsNumber(timeoutMs)}ms.`;
+}
 
 // ---------------------------------------------------------------------------
 // Generation config helpers
@@ -167,62 +226,6 @@ function buildGenerationConfig(
 }
 
 // ---------------------------------------------------------------------------
-// Signal / sleep helpers
-// ---------------------------------------------------------------------------
-
-function combineSignals(
-  signal: AbortSignal,
-  requestSignal?: AbortSignal
-): AbortSignal {
-  return requestSignal ? AbortSignal.any([signal, requestSignal]) : signal;
-}
-
-function throwIfRequestCancelled(requestSignal?: AbortSignal): void {
-  if (requestSignal?.aborted) {
-    throw new Error(CANCELLED_REQUEST_MESSAGE);
-  }
-}
-
-function getSleepOptions(signal?: AbortSignal): Parameters<typeof sleep>[2] {
-  return signal ? { ...SLEEP_UNREF_OPTIONS, signal } : SLEEP_UNREF_OPTIONS;
-}
-
-// ---------------------------------------------------------------------------
-// Response parsing
-// ---------------------------------------------------------------------------
-
-function parseStructuredResponse(responseText: string | undefined): unknown {
-  if (!responseText) {
-    throw new Error('Gemini returned an empty response body.');
-  }
-
-  try {
-    return JSON.parse(responseText);
-  } catch {
-    // fast-path failed; try extracting from markdown block
-  }
-
-  const jsonMatch = JSON_CODE_BLOCK_PATTERN.exec(responseText);
-  const jsonText = jsonMatch?.[1] ?? responseText;
-
-  try {
-    return JSON.parse(jsonText);
-  } catch (error: unknown) {
-    throw new Error(`Model produced invalid JSON: ${getErrorMessage(error)}`, {
-      cause: error,
-    });
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Error message formatters
-// ---------------------------------------------------------------------------
-
-function formatTimeoutErrorMessage(timeoutMs: number): string {
-  return `Gemini request timed out after ${formatUsNumber(timeoutMs)}ms.`;
-}
-
-// ---------------------------------------------------------------------------
 // Core generation call with timeout
 // ---------------------------------------------------------------------------
 
@@ -271,11 +274,13 @@ function isObject(val: unknown): val is Record<string, unknown> {
   return typeof val === 'object' && val !== null;
 }
 
+function isPartType<T>(part: unknown, key: keyof T): part is T {
+  return isObject(part) && key in part;
+}
+
 function isThoughtPart(part: unknown): part is ThoughtPart {
   return (
-    isObject(part) &&
-    part['thought'] === true &&
-    typeof part['text'] === 'string'
+    isPartType<ThoughtPart>(part, 'thought') && typeof part.text === 'string'
   );
 }
 
@@ -285,10 +290,9 @@ interface TextOnlyPart {
 
 function isTextOnlyPart(part: unknown): part is TextOnlyPart {
   return (
-    isObject(part) &&
-    'text' in part &&
-    typeof part['text'] === 'string' &&
-    !part['thought']
+    isPartType<TextOnlyPart>(part, 'text') &&
+    typeof part.text === 'string' &&
+    (!('thought' in part) || !(part as Record<string, unknown>).thought)
   );
 }
 
@@ -320,9 +324,8 @@ interface CodeExecutionResultPart {
 
 function isExecutableCodePart(part: unknown): part is ExecutableCodePart {
   return (
-    isObject(part) &&
-    'executableCode' in part &&
-    isObject(part['executableCode'])
+    isPartType<ExecutableCodePart>(part, 'executableCode') &&
+    isObject(part.executableCode)
   );
 }
 
@@ -330,9 +333,8 @@ function isCodeExecutionResultPart(
   part: unknown
 ): part is CodeExecutionResultPart {
   return (
-    isObject(part) &&
-    'codeExecutionResult' in part &&
-    isObject(part['codeExecutionResult'])
+    isPartType<CodeExecutionResultPart>(part, 'codeExecutionResult') &&
+    isObject(part.codeExecutionResult)
   );
 }
 
@@ -373,30 +375,45 @@ function extractCodeExecutionResponse(
 // Single-attempt execution
 // ---------------------------------------------------------------------------
 
+type RequestType =
+  | 'code_execution'
+  | 'grounding'
+  | 'file_search'
+  | 'structured_json';
+
+function getRequestType(request: GeminiStructuredRequest): RequestType {
+  if (request.useCodeExecution) return 'code_execution';
+  if (request.useGrounding) return 'grounding';
+  if (request.fileSearchStoreNames && request.fileSearchStoreNames.length > 0) {
+    return 'file_search';
+  }
+  return 'structured_json';
+}
+
 function handleExecutionResponse(
   request: GeminiStructuredRequest,
   response: GenerateContentResponse
 ): unknown {
-  if (request.useCodeExecution) {
-    return extractCodeExecutionResponse(response);
-  }
+  switch (getRequestType(request)) {
+    case 'code_execution':
+      return extractCodeExecutionResponse(response);
 
-  if (request.useGrounding) {
-    return {
-      text: response.text,
-      groundingMetadata: response.candidates?.[0]?.groundingMetadata,
-    };
-  }
+    case 'grounding':
+      return {
+        text: response.text,
+        groundingMetadata: response.candidates?.[0]?.groundingMetadata,
+      };
 
-  if (request.fileSearchStoreNames && request.fileSearchStoreNames.length > 0) {
-    const parts = (response.candidates?.[0]?.content?.parts ?? []) as unknown[];
-    return {
-      text: response.text ?? '',
-      parts,
-    };
-  }
+    case 'file_search':
+      return {
+        text: response.text ?? '',
+        parts: (response.candidates?.[0]?.content?.parts ?? []) as unknown[],
+      };
 
-  return parseStructuredResponse(response.text);
+    case 'structured_json':
+    default:
+      return parseStructuredResponse(response.text);
+  }
 }
 
 async function executeAttempt(
@@ -565,63 +582,51 @@ interface BatchApiClient {
   };
 }
 
+function getDeepValue(payload: unknown, path: string[]): unknown {
+  let current = payload;
+  for (const key of path) {
+    const record = toRecord(current);
+    if (!record || !(key in record)) {
+      return undefined;
+    }
+    current = record[key];
+  }
+  return current;
+}
+
+function extractFirstString(
+  payload: unknown,
+  paths: string[][]
+): string | undefined {
+  for (const path of paths) {
+    const val = getDeepValue(payload, path);
+    if (typeof val === 'string') {
+      return val;
+    }
+  }
+  return undefined;
+}
+
 const BatchHelper = {
   getState(payload: unknown): string | undefined {
-    const record = toRecord(payload);
-    if (!record) return undefined;
-
-    const directState = toUpperStringCode(record.state);
-    if (directState) return directState;
-
-    const metadata = toRecord(record.metadata);
-    return metadata ? toUpperStringCode(metadata.state) : undefined;
+    const val = extractFirstString(payload, [['state'], ['metadata', 'state']]);
+    return val ? (toUpperStringCode(val) ?? undefined) : undefined;
   },
 
   getResponseText(payload: unknown): string | undefined {
-    const record = toRecord(payload);
-    if (!record) return undefined;
-
-    // Try inlineResponse.text
-    const inline = toRecord(record.inlineResponse);
-    if (typeof inline?.text === 'string') return inline.text;
-
-    const response = toRecord(record.response);
-    if (!response) return undefined;
-
-    // Try response.text
-    if (typeof response.text === 'string') return response.text;
-
-    // Try response.inlineResponses[0].text
-    if (
-      Array.isArray(response.inlineResponses) &&
-      response.inlineResponses.length > 0
-    ) {
-      const first = toRecord(response.inlineResponses[0]);
-      if (typeof first?.text === 'string') return first.text;
-    }
-
-    return undefined;
+    return extractFirstString(payload, [
+      ['inlineResponse', 'text'],
+      ['response', 'text'],
+      ['response', 'inlineResponses', '0', 'text'],
+    ]);
   },
 
   getErrorDetail(payload: unknown): string | undefined {
-    const record = toRecord(payload);
-    if (!record) return undefined;
-
-    // Try error.message
-    const directError = toRecord(record.error);
-    if (typeof directError?.message === 'string') return directError.message;
-
-    // Try metadata.error.message
-    const metadata = toRecord(record.metadata);
-    const metaError = toRecord(metadata?.error);
-    if (typeof metaError?.message === 'string') return metaError.message;
-
-    // Try response.error.message
-    const response = toRecord(record.response);
-    const respError = toRecord(response?.error);
-    return typeof respError?.message === 'string'
-      ? respError.message
-      : undefined;
+    return extractFirstString(payload, [
+      ['error', 'message'],
+      ['metadata', 'error', 'message'],
+      ['response', 'error', 'message'],
+    ]);
   },
 
   getSuccessResponseText(polled: unknown): string {
@@ -720,6 +725,22 @@ async function createBatchJob(
   return await batches.create(createPayload);
 }
 
+function processPollResult(
+  state: string | undefined,
+  polled: unknown
+): { isDone: boolean; result?: unknown } {
+  if (state === 'JOB_STATE_SUCCEEDED') {
+    const responseText = BatchHelper.getSuccessResponseText(polled);
+    return {
+      isDone: true,
+      result: parseStructuredResponse(responseText),
+    };
+  }
+
+  BatchHelper.handleTerminalState(state, polled);
+  return { isDone: false };
+}
+
 async function pollBatchForCompletion(
   batches: NonNullable<BatchApiClient['batches']>,
   batchName: string,
@@ -730,8 +751,7 @@ async function pollBatchForCompletion(
   const timeoutMs = batchTimeoutMsConfig.get();
   const pollStart = performance.now();
 
-  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-  while (true) {
+  for (;;) {
     throwIfRequestCancelled(requestSignal);
 
     const elapsedMs = Math.round(performance.now() - pollStart);
@@ -747,14 +767,16 @@ async function pollBatchForCompletion(
       onLog,
       requestSignal
     );
-    const state = BatchHelper.getState(polled);
 
-    if (state === 'JOB_STATE_SUCCEEDED') {
-      const responseText = BatchHelper.getSuccessResponseText(polled);
-      return parseStructuredResponse(responseText);
+    const { isDone, result } = processPollResult(
+      BatchHelper.getState(polled),
+      polled
+    );
+
+    if (isDone) {
+      return result;
     }
 
-    BatchHelper.handleTerminalState(state, polled);
     await sleep(pollIntervalMs, undefined, getSleepOptions(requestSignal));
   }
 }
