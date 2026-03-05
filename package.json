@@ -1,5 +1,5 @@
 {
-  "name": "@j0hanz/code-lens",
+  "name": "@j0hanz/code-lens-mcp",
   "version": "0.9.3",
   "mcpName": "io.github.j0hanz/code-lens",
   "description": "Gemini-powered MCP server for code analysis.",

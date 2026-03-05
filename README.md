@@ -34,7 +34,7 @@ Code Lens is a [Model Context Protocol](https://modelcontextprotocol.io/) server
   "mcpServers": {
     "code-lens": {
       "command": "npx",
-      "args": ["-y", "@j0hanz/code-lens@latest"],
+      "args": ["-y", "@j0hanz/code-lens-mcp@latest"],
       "env": {
         "GEMINI_API_KEY": "your-api-key"
       }
@@ -69,7 +69,7 @@ Add to `.vscode/mcp.json`:
   "servers": {
     "code-lens": {
       "command": "npx",
-      "args": ["-y", "@j0hanz/code-lens@latest"],
+      "args": ["-y", "@j0hanz/code-lens-mcp@latest"],
       "env": {
         "GEMINI_API_KEY": "your-api-key"
       }
@@ -81,7 +81,7 @@ Add to `.vscode/mcp.json`:
 Or install via CLI:
 
 ```sh
-code --add-mcp '{"name":"code-lens","command":"npx","args":["-y","@j0hanz/code-lens@latest"]}'
+code --add-mcp '{"name":"code-lens","command":"npx","args":["-y","@j0hanz/code-lens-mcp@latest"]}'
 ```
 
 For more info, see [VS Code MCP docs](https://code.visualstudio.com/docs/copilot/chat/mcp-servers).
@@ -100,7 +100,7 @@ Add to `.vscode/mcp.json`:
   "servers": {
     "code-lens": {
       "command": "npx",
-      "args": ["-y", "@j0hanz/code-lens@latest"],
+      "args": ["-y", "@j0hanz/code-lens-mcp@latest"],
       "env": {
         "GEMINI_API_KEY": "your-api-key"
       }
@@ -112,7 +112,7 @@ Add to `.vscode/mcp.json`:
 Or install via CLI:
 
 ```sh
-code-insiders --add-mcp '{"name":"code-lens","command":"npx","args":["-y","@j0hanz/code-lens@latest"]}'
+code-insiders --add-mcp '{"name":"code-lens","command":"npx","args":["-y","@j0hanz/code-lens-mcp@latest"]}'
 ```
 
 For more info, see [VS Code Insiders MCP docs](https://code.visualstudio.com/docs/copilot/chat/mcp-servers).
@@ -131,7 +131,7 @@ Add to `~/.cursor/mcp.json`:
   "mcpServers": {
     "code-lens": {
       "command": "npx",
-      "args": ["-y", "@j0hanz/code-lens@latest"],
+      "args": ["-y", "@j0hanz/code-lens-mcp@latest"],
       "env": {
         "GEMINI_API_KEY": "your-api-key"
       }
@@ -156,7 +156,7 @@ Add to `mcp.json`:
   "mcpServers": {
     "code-lens": {
       "command": "npx",
-      "args": ["-y", "@j0hanz/code-lens@latest"],
+      "args": ["-y", "@j0hanz/code-lens-mcp@latest"],
       "env": {
         "GEMINI_API_KEY": "your-api-key"
       }
@@ -179,7 +179,7 @@ For more info, see [Visual Studio MCP docs](https://learn.microsoft.com/en-us/vi
   "mcpServers": {
     "code-lens": {
       "command": "npx",
-      "args": ["-y", "@j0hanz/code-lens@latest"],
+      "args": ["-y", "@j0hanz/code-lens-mcp@latest"],
       "env": {
         "GEMINI_API_KEY": "your-api-key"
       }
@@ -202,7 +202,7 @@ For more info, see [Goose MCP docs](https://block.github.io/goose/docs/getting-s
   "mcpServers": {
     "code-lens": {
       "command": "npx",
-      "args": ["-y", "@j0hanz/code-lens@latest"],
+      "args": ["-y", "@j0hanz/code-lens-mcp@latest"],
       "env": {
         "GEMINI_API_KEY": "your-api-key"
       }
@@ -225,7 +225,7 @@ Add to `claude_desktop_config.json`:
   "mcpServers": {
     "code-lens": {
       "command": "npx",
-      "args": ["-y", "@j0hanz/code-lens@latest"],
+      "args": ["-y", "@j0hanz/code-lens-mcp@latest"],
       "env": {
         "GEMINI_API_KEY": "your-api-key"
       }
@@ -242,7 +242,7 @@ For more info, see [Claude Desktop MCP docs](https://modelcontextprotocol.io/qui
 <summary><b>Install in Claude Code</b></summary>
 
 ```sh
-claude mcp add code-lens -- npx -y @j0hanz/code-lens@latest
+claude mcp add code-lens -- npx -y @j0hanz/code-lens-mcp@latest
 ```
 
 Or add to config:
@@ -252,7 +252,7 @@ Or add to config:
   "mcpServers": {
     "code-lens": {
       "command": "npx",
-      "args": ["-y", "@j0hanz/code-lens@latest"],
+      "args": ["-y", "@j0hanz/code-lens-mcp@latest"],
       "env": {
         "GEMINI_API_KEY": "your-api-key"
       }
@@ -275,7 +275,7 @@ Add to `~/.codeium/windsurf/mcp_config.json`:
   "mcpServers": {
     "code-lens": {
       "command": "npx",
-      "args": ["-y", "@j0hanz/code-lens@latest"],
+      "args": ["-y", "@j0hanz/code-lens-mcp@latest"],
       "env": {
         "GEMINI_API_KEY": "your-api-key"
       }
@@ -292,7 +292,7 @@ For more info, see [Windsurf MCP docs](https://docs.windsurf.com/windsurf/mcp).
 <summary><b>Install in Amp</b></summary>
 
 ```sh
-amp mcp add code-lens -- npx -y @j0hanz/code-lens@latest
+amp mcp add code-lens -- npx -y @j0hanz/code-lens-mcp@latest
 ```
 
 Or add to config:
@@ -302,7 +302,7 @@ Or add to config:
   "mcpServers": {
     "code-lens": {
       "command": "npx",
-      "args": ["-y", "@j0hanz/code-lens@latest"],
+      "args": ["-y", "@j0hanz/code-lens-mcp@latest"],
       "env": {
         "GEMINI_API_KEY": "your-api-key"
       }
@@ -325,7 +325,7 @@ Add to `cline_mcp_settings.json`:
   "mcpServers": {
     "code-lens": {
       "command": "npx",
-      "args": ["-y", "@j0hanz/code-lens@latest"],
+      "args": ["-y", "@j0hanz/code-lens-mcp@latest"],
       "env": {
         "GEMINI_API_KEY": "your-api-key"
       }
@@ -348,7 +348,7 @@ Add to `~/.codex/config.yaml`:
   "mcpServers": {
     "code-lens": {
       "command": "npx",
-      "args": ["-y", "@j0hanz/code-lens@latest"],
+      "args": ["-y", "@j0hanz/code-lens-mcp@latest"],
       "env": {
         "GEMINI_API_KEY": "your-api-key"
       }
@@ -371,7 +371,7 @@ Add to `.vscode/mcp.json`:
   "servers": {
     "code-lens": {
       "command": "npx",
-      "args": ["-y", "@j0hanz/code-lens@latest"],
+      "args": ["-y", "@j0hanz/code-lens-mcp@latest"],
       "env": {
         "GEMINI_API_KEY": "your-api-key"
       }
@@ -392,7 +392,7 @@ For more info, see [GitHub Copilot MCP docs](https://code.visualstudio.com/docs/
   "mcpServers": {
     "code-lens": {
       "command": "npx",
-      "args": ["-y", "@j0hanz/code-lens@latest"],
+      "args": ["-y", "@j0hanz/code-lens-mcp@latest"],
       "env": {
         "GEMINI_API_KEY": "your-api-key"
       }
@@ -415,7 +415,7 @@ Add to `.kiro/settings/mcp.json`:
   "mcpServers": {
     "code-lens": {
       "command": "npx",
-      "args": ["-y", "@j0hanz/code-lens@latest"],
+      "args": ["-y", "@j0hanz/code-lens-mcp@latest"],
       "env": {
         "GEMINI_API_KEY": "your-api-key"
       }
@@ -438,7 +438,7 @@ Add to `~/.gemini/settings.json`:
   "mcpServers": {
     "code-lens": {
       "command": "npx",
-      "args": ["-y", "@j0hanz/code-lens@latest"],
+      "args": ["-y", "@j0hanz/code-lens-mcp@latest"],
       "env": {
         "GEMINI_API_KEY": "your-api-key"
       }
@@ -462,7 +462,7 @@ Add to `~/.config/zed/settings.json`:
     "code-lens": {
       "settings": {
         "command": "npx",
-        "args": ["-y", "@j0hanz/code-lens@latest"]
+        "args": ["-y", "@j0hanz/code-lens-mcp@latest"]
       }
     }
   }
@@ -485,7 +485,7 @@ Add to your VS Code `settings.json` under `augment.advanced`:
       {
         "id": "code-lens",
         "command": "npx",
-        "args": ["-y", "@j0hanz/code-lens@latest"],
+        "args": ["-y", "@j0hanz/code-lens-mcp@latest"],
         "env": {
           "GEMINI_API_KEY": "your-api-key"
         }
@@ -507,7 +507,7 @@ For more info, see [Augment MCP docs](https://docs.augmentcode.com/setup-mcp-ser
   "mcpServers": {
     "code-lens": {
       "command": "npx",
-      "args": ["-y", "@j0hanz/code-lens@latest"],
+      "args": ["-y", "@j0hanz/code-lens-mcp@latest"],
       "env": {
         "GEMINI_API_KEY": "your-api-key"
       }
@@ -528,7 +528,7 @@ For more info, see [Roo Code MCP docs](https://docs.roocode.com/features/mcp/usi
   "mcpServers": {
     "code-lens": {
       "command": "npx",
-      "args": ["-y", "@j0hanz/code-lens@latest"],
+      "args": ["-y", "@j0hanz/code-lens-mcp@latest"],
       "env": {
         "GEMINI_API_KEY": "your-api-key"
       }
@@ -709,7 +709,7 @@ All Gemini-powered tools return validated `structuredContent` alongside text `co
 ### CLI Flags
 
 ```bash
-npx @j0hanz/code-lens@latest --model gemini-2.5-flash --max-diff-chars 200000
+npx @j0hanz/code-lens-mcp@latest --model gemini-2.5-flash --max-diff-chars 200000
 ```
 
 | Flag               | Env Equivalent   |
@@ -747,7 +747,7 @@ npm run knip         # Dead code detection
 - CI: `.github/workflows/release.yml`
 - Docker: Multi-stage build (`Dockerfile`) with `node:24-alpine`
 - Docker Compose: `docker-compose.yml`
-- npm: Published as [`@j0hanz/code-lens`](https://www.npmjs.com/package/@j0hanz/code-lens)
+- npm: Published as [`@j0hanz/code-lens-mcp`](https://www.npmjs.com/package/@j0hanz/code-lens-mcp)
 
 ## Troubleshooting
 
