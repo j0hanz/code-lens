@@ -277,6 +277,10 @@ export interface TaskStatusReporter {
     status: 'completed' | 'failed',
     result: { isError?: boolean; content: ToolContentBlock[] }
   ) => Promise<void>;
+  storeCancelledResult?: (result: {
+    isError?: boolean;
+    content: ToolContentBlock[];
+  }) => Promise<void>;
   reportCancellation?: (message: string) => Promise<void>;
 }
 
@@ -318,6 +322,23 @@ export class RunReporter {
     } catch (storeErr: unknown) {
       await onLog('error', {
         event: 'store_result_failed',
+        error: getErrorMessage(storeErr),
+      });
+    }
+  }
+
+  async storeCancelledResultSafely(
+    result: { isError?: boolean; content: ToolContentBlock[] },
+    onLog: (level: string, data: unknown) => Promise<void>
+  ): Promise<void> {
+    if (!this.statusReporter.storeCancelledResult) {
+      return;
+    }
+    try {
+      await this.statusReporter.storeCancelledResult(result);
+    } catch (storeErr: unknown) {
+      await onLog('error', {
+        event: 'store_cancelled_result_failed',
         error: getErrorMessage(storeErr),
       });
     }

@@ -122,7 +122,10 @@ function formatGitFailureMessage(
   return `Failed to run git: ${err.message}. Ensure git is installed and the working directory is a git repository.`;
 }
 
-async function runGitDiff(mode: DiffMode): Promise<string> {
+async function runGitDiff(
+  mode: DiffMode,
+  signal?: AbortSignal
+): Promise<string> {
   const gitRoot = await findGitRoot();
   const args = buildGitArgs(mode);
   const { stdout } = await execFileAsync('git', args, {
@@ -130,6 +133,7 @@ async function runGitDiff(mode: DiffMode): Promise<string> {
     encoding: 'utf8',
     maxBuffer: GIT_MAX_BUFFER,
     timeout: GIT_TIMEOUT_MS,
+    ...(signal ? { signal } : {}),
   });
   return cleanDiff(stdout);
 }
@@ -147,18 +151,22 @@ function buildGitErrorResponse(
 }
 
 async function generateDiffToolResponse(
-  mode: DiffMode
+  mode: DiffMode,
+  signal?: AbortSignal
 ): Promise<
   | ReturnType<typeof createToolResponse>
   | ReturnType<typeof createErrorToolResponse>
 > {
   try {
-    const diff = await runGitDiff(mode);
+    const diff = await runGitDiff(mode, signal);
     if (isEmptyDiff(diff)) {
       return createNoChangesResponse(mode);
     }
     return createSuccessResponse(diff, mode);
   } catch (error: unknown) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      throw error;
+    }
     return buildGitErrorResponse(error);
   }
 }
@@ -228,9 +236,9 @@ export function registerGenerateDiffTool(server: McpServer): void {
       {
         toolName: 'Generate Diff',
       },
-      async (input) => {
+      async (input, extra) => {
         const { mode } = GenerateDiffInputSchema.parse(input);
-        return generateDiffToolResponse(mode);
+        return await generateDiffToolResponse(mode, extra.signal);
       }
     )
   );

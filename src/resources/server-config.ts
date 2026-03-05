@@ -12,6 +12,8 @@ const DEFAULT_MAX_DIFF_CHARS = 120_000;
 const DEFAULT_MAX_CONCURRENT_CALLS = 10;
 const DEFAULT_CONCURRENT_WAIT_MS = 2_000;
 const DEFAULT_SAFETY_THRESHOLD = 'BLOCK_NONE';
+const DEFAULT_TASK_TTL_MS = 300_000;
+const DEFAULT_MAX_TASK_TTL_MS = 3_600_000;
 
 const GEMINI_HARM_BLOCK_THRESHOLD_ENV_VAR = 'GEMINI_HARM_BLOCK_THRESHOLD';
 const GEMINI_MODEL_ENV_VAR = 'GEMINI_MODEL';
@@ -33,6 +35,11 @@ const concurrentWaitConfig = createCachedEnvInt(
   'MAX_CONCURRENT_CALLS_WAIT_MS',
   DEFAULT_CONCURRENT_WAIT_MS
 );
+const taskTtlConfig = createCachedEnvInt('TASK_TTL_MS', DEFAULT_TASK_TTL_MS);
+const maxTaskTtlConfig = createCachedEnvInt(
+  'MAX_TASK_TTL_MS',
+  DEFAULT_MAX_TASK_TTL_MS
+);
 
 function getModelOverride(): string {
   return process.env[GEMINI_MODEL_ENV_VAR] ?? FLASH_MODEL;
@@ -53,6 +60,8 @@ export function buildServerConfig(): string {
   const maxConcurrent = concurrentCallsConfig.get();
   const maxConcurrentBatch = concurrentBatchCallsConfig.get();
   const concurrentWaitMs = concurrentWaitConfig.get();
+  const taskTtlMs = taskTtlConfig.get();
+  const maxTaskTtlMs = maxTaskTtlConfig.get();
   const defaultModel = getModelOverride();
   const batchMode = getBatchMode();
   const safetyThreshold = getSafetyThreshold();
@@ -73,6 +82,8 @@ export function buildServerConfig(): string {
 | Concurrency limit | ${maxConcurrent} | ${toInlineCode('MAX_CONCURRENT_CALLS')} |
 | Batch concurrency limit | ${maxConcurrentBatch} | ${toInlineCode('MAX_CONCURRENT_BATCH_CALLS')} |
 | Wait timeout | ${formatUsNumber(concurrentWaitMs)}ms | ${toInlineCode('MAX_CONCURRENT_CALLS_WAIT_MS')} |
+| Default task TTL | ${formatUsNumber(taskTtlMs)}ms | ${toInlineCode('TASK_TTL_MS')} |
+| Max task TTL | ${maxTaskTtlMs === 0 ? 'unlimited' : `${formatUsNumber(maxTaskTtlMs)}ms`} | ${toInlineCode('MAX_TASK_TTL_MS')} |
 | Batch mode | ${batchMode} | ${toInlineCode('GEMINI_BATCH_MODE')} |
 
 ## Model Assignments
@@ -97,5 +108,11 @@ ${toolRows}
 - ${toInlineCode('GEMINI_BATCH_MODE')}: ${toInlineCode('off')} (default) or ${toInlineCode('inline')}
 - ${toInlineCode('GEMINI_BATCH_POLL_INTERVAL_MS')}: poll cadence for batch status checks
 - ${toInlineCode('GEMINI_BATCH_TIMEOUT_MS')}: max wait for batch completion
+
+## Tasks
+
+- Requestors may provide a task TTL; the server honors it up to ${toInlineCode('MAX_TASK_TTL_MS')}.
+- If the request does not specify a TTL, the server uses ${toInlineCode('TASK_TTL_MS')}.
+- Set ${toInlineCode('MAX_TASK_TTL_MS')} to ${toInlineCode('0')} to disable the cap.
 `;
 }

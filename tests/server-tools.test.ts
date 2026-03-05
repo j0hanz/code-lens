@@ -3,6 +3,7 @@ import { afterEach, describe, it } from 'node:test';
 
 import type { RegisteredTool } from '@modelcontextprotocol/sdk/server/mcp.js';
 
+import { getToolContracts } from '../src/lib/tools.js';
 import { createServer } from '../src/server.js';
 
 type ToolRegistry = Record<string, RegisteredTool>;
@@ -31,33 +32,17 @@ describe('server tool registration', () => {
     }
   });
 
-  it('keeps generate_diff and load_file task-forbidden', () => {
+  it('matches registered task support to tool contracts', () => {
     const serverState = getRegisteredTools();
     shutdown = serverState.shutdown;
 
-    assert.equal(
-      serverState.tools.generate_diff?.execution?.taskSupport,
-      'forbidden'
-    );
-    assert.equal(
-      serverState.tools.load_file?.execution?.taskSupport,
-      'forbidden'
-    );
-  });
-
-  it('registers every other tool as task-optional', () => {
-    const serverState = getRegisteredTools();
-    shutdown = serverState.shutdown;
-
-    for (const [name, tool] of Object.entries(serverState.tools)) {
-      if (name === 'generate_diff' || name === 'load_file') {
-        continue;
-      }
-
+    for (const contract of getToolContracts()) {
+      const tool = serverState.tools[contract.name];
+      const actualTaskSupport = tool?.execution?.taskSupport ?? 'forbidden';
       assert.equal(
-        tool.execution?.taskSupport,
-        'optional',
-        `${name} should expose optional task support`
+        actualTaskSupport,
+        contract.taskSupport,
+        `${contract.name} should mirror contract task support`
       );
     }
   });

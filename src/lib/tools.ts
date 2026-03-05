@@ -55,6 +55,7 @@ import {
   STEP_VALIDATING_RESPONSE,
   type TaskStatusReporter,
 } from './progress.js';
+import { hasCancelledTaskResultStore } from './task-store.js';
 import {
   createErrorToolResponse,
   createToolResponse,
@@ -94,6 +95,11 @@ const schemaRetryErrorCharsConfig = createCachedEnvInt(
 );
 const DEFAULT_TASK_TTL_MS = 300_000;
 const taskTtlMsConfig = createCachedEnvInt('TASK_TTL_MS', DEFAULT_TASK_TTL_MS);
+const DEFAULT_MAX_TASK_TTL_MS = 3_600_000;
+const maxTaskTtlMsConfig = createCachedEnvInt(
+  'MAX_TASK_TTL_MS',
+  DEFAULT_MAX_TASK_TTL_MS
+);
 const DETERMINISTIC_JSON_RETRY_NOTE =
   'Deterministic JSON mode: keep key names exactly as schema-defined and preserve stable field ordering.';
 const COMPLETED_STATUS_PREFIX = 'completed: ';
@@ -223,6 +229,9 @@ export interface StructuredToolTaskConfig<
 
   /** Optional formatter for human-readable text output. */
   formatOutput?: (result: TFinal) => string;
+
+  /** MCP per-tool task negotiation mode for task-backed execution. */
+  taskSupport?: 'optional' | 'required';
 
   /** Optional context text used in progress messages. */
   progressContext?: (input: TInput) => string;
@@ -417,6 +426,21 @@ function appendStaleFileWarning(
   const ageMinutes = Math.round(ageMs / 60_000);
   const warning = `${STALE_FILE_WARNING_PREFIX}${ageMinutes}${STALE_FILE_WARNING_SUFFIX}`;
   return textContent ? textContent + warning : warning;
+}
+
+function resolveTaskTtlMs(requestedTtl: number | null | undefined): number {
+  const fallbackTtl = taskTtlMsConfig.get();
+  const baseTtl = requestedTtl ?? fallbackTtl;
+  if (!Number.isFinite(baseTtl) || baseTtl < 0) {
+    return fallbackTtl;
+  }
+
+  const maxTtl = maxTaskTtlMsConfig.get();
+  if (maxTtl === 0) {
+    return baseTtl;
+  }
+
+  return Math.min(baseTtl, maxTtl);
 }
 
 function toLoggingLevel(level: string): LoggingLevel {
@@ -763,6 +787,7 @@ class ToolExecutionRunner<
     );
 
     if (outcome === 'cancelled') {
+      await this.reporter.storeCancelledResultSafely(errorResponse, this.onLog);
       await this.reporter.reportCancellation(errorMessage);
     } else {
       await this.reporter.storeResultSafely(
@@ -884,12 +909,42 @@ function createTaskStatusReporter(
     storeResult: async (status, result) => {
       await extra.taskStore.storeTaskResult(taskId, status, result);
     },
+    storeCancelledResult: async (result) => {
+      if (hasCancelledTaskResultStore(store)) {
+        await store.storeCancelledTaskResult(taskId, result);
+      }
+    },
     reportCancellation: async (message) => {
       if (hasTaskStatusUpdate(store)) {
         await store.updateTaskStatus(taskId, 'cancelled', message);
       }
     },
   };
+}
+
+function createCancelledTaskResult(
+  errorCode: string,
+  statusMessage: string | undefined
+): CallToolResult {
+  return createErrorToolResponse(
+    errorCode,
+    statusMessage ?? 'Task cancelled',
+    undefined,
+    { retryable: false, kind: 'cancelled' }
+  );
+}
+
+async function getTaskResultOrCancellation(
+  taskStore: RequestTaskStore,
+  taskId: string,
+  errorCode: string
+): Promise<CallToolResult> {
+  const task = await taskStore.getTask(taskId);
+  if (task.status === 'cancelled') {
+    return createCancelledTaskResult(errorCode, task.statusMessage);
+  }
+
+  return (await taskStore.getTaskResult(taskId)) as CallToolResult;
 }
 
 function runToolTaskInBackground<
@@ -901,9 +956,21 @@ function runToolTaskInBackground<
   input: unknown,
   taskId: string,
   store: RequestTaskStore,
+  errorCode: string,
   signal?: AbortSignal
 ): void {
   if (signal?.aborted) {
+    if (hasCancelledTaskResultStore(store)) {
+      store
+        .storeCancelledTaskResult(
+          taskId,
+          createCancelledTaskResult(
+            errorCode,
+            'Cancelled before execution started'
+          )
+        )
+        .catch(() => {});
+    }
     if (hasTaskStatusUpdate(store)) {
       store
         .updateTaskStatus(
@@ -927,6 +994,14 @@ function runToolTaskInBackground<
     const isCancelled = (signal?.aborted ?? false) || isAbort;
 
     try {
+      if (isCancelled && hasCancelledTaskResultStore(store)) {
+        await store
+          .storeCancelledTaskResult(
+            taskId,
+            createCancelledTaskResult(errorCode, getErrorMessage(error))
+          )
+          .catch(() => {});
+      }
       if (hasTaskStatusUpdate(store)) {
         await store.updateTaskStatus(
           taskId,
@@ -967,7 +1042,7 @@ export function registerStructuredToolTask<
       outputSchema,
       annotations: buildToolAnnotations(config.annotations),
       execution: {
-        taskSupport: 'optional',
+        taskSupport: config.taskSupport ?? 'optional',
       },
     },
     {
@@ -976,8 +1051,15 @@ export function registerStructuredToolTask<
         extra: CreateTaskRequestHandlerExtra
       ) => {
         const task = await extra.taskStore.createTask({
-          ttl: taskTtlMsConfig.get(),
+          ttl: resolveTaskTtlMs(extra.taskRequestedTtl),
         });
+
+        if (hasCancelledTaskResultStore(extra.taskStore)) {
+          await extra.taskStore.storeCancelledTaskResult(
+            task.taskId,
+            createCancelledTaskResult(config.errorCode, 'Task cancelled')
+          );
+        }
 
         const runner = new ToolExecutionRunner(
           config,
@@ -998,6 +1080,7 @@ export function registerStructuredToolTask<
           input,
           task.taskId,
           extra.taskStore,
+          config.errorCode,
           extra.signal
         );
 
@@ -1012,9 +1095,151 @@ export function registerStructuredToolTask<
         return await extra.taskStore.getTask(extra.taskId);
       },
       getTaskResult: async (input: unknown, extra: TaskRequestHandlerExtra) => {
-        return (await extra.taskStore.getTaskResult(
-          extra.taskId
-        )) as CallToolResult;
+        return await getTaskResultOrCancellation(
+          extra.taskStore,
+          extra.taskId,
+          config.errorCode
+        );
+      },
+    }
+  );
+}
+
+export interface TaskBackedToolConfig<
+  TInput = Record<string, unknown>,
+  TOutputSchema extends z.ZodType = z.ZodType,
+> {
+  name: string;
+  title: string;
+  description: string;
+  inputSchema: ZodRawShapeCompat | z.ZodType<TInput>;
+  outputSchema?: TOutputSchema;
+  annotations?: ToolAnnotations;
+  taskSupport?: 'optional' | 'required';
+  errorCode: string;
+  handler: (
+    input: TInput,
+    extra: ProgressExtra
+  ) => Promise<CallToolResult> | CallToolResult;
+}
+
+function normalizeTaskResultStatus(
+  result: CallToolResult
+): 'completed' | 'failed' {
+  return result.isError ? 'failed' : 'completed';
+}
+
+function runTaskBackedToolInBackground<TInput>(
+  config: TaskBackedToolConfig<TInput>,
+  input: TInput,
+  taskId: string,
+  extra: CreateTaskRequestHandlerExtra
+): void {
+  void Promise.resolve(config.handler(input, toProgressExtra(extra)))
+    .then(async (result) => {
+      try {
+        await extra.taskStore.storeTaskResult(
+          taskId,
+          normalizeTaskResultStatus(result),
+          result
+        );
+      } catch (error: unknown) {
+        if (hasTaskStatusUpdate(extra.taskStore)) {
+          await extra.taskStore
+            .updateTaskStatus(taskId, 'failed', getErrorMessage(error))
+            .catch(() => {});
+        }
+      }
+    })
+    .catch(async (error: unknown) => {
+      const errorMessage = getErrorMessage(error);
+      const errorMeta = classifyErrorMeta(error, errorMessage);
+      const isCancelled = errorMeta.kind === 'cancelled';
+
+      if (isCancelled && hasCancelledTaskResultStore(extra.taskStore)) {
+        await extra.taskStore
+          .storeCancelledTaskResult(
+            taskId,
+            createCancelledTaskResult(config.errorCode, errorMessage)
+          )
+          .catch(() => {});
+      }
+
+      if (hasTaskStatusUpdate(extra.taskStore)) {
+        await extra.taskStore
+          .updateTaskStatus(
+            taskId,
+            isCancelled ? 'cancelled' : 'failed',
+            errorMessage
+          )
+          .catch(() => {});
+      }
+    });
+}
+
+export function registerTaskBackedTool<
+  TInput = Record<string, unknown>,
+  TOutputSchema extends z.ZodType = z.ZodType,
+>(
+  server: McpServer,
+  config: TaskBackedToolConfig<TInput, TOutputSchema>
+): void {
+  server.experimental.tasks.registerToolTask(
+    config.name,
+    {
+      title: config.title,
+      description: config.description,
+      inputSchema: config.inputSchema,
+      ...(config.outputSchema !== undefined
+        ? { outputSchema: config.outputSchema }
+        : {}),
+      annotations: buildToolAnnotations(config.annotations),
+      execution: {
+        taskSupport: config.taskSupport ?? 'optional',
+      },
+    },
+    {
+      createTask: async (
+        input: unknown,
+        extra: CreateTaskRequestHandlerExtra
+      ) => {
+        const task = await extra.taskStore.createTask({
+          ttl: resolveTaskTtlMs(extra.taskRequestedTtl),
+        });
+
+        if (hasCancelledTaskResultStore(extra.taskStore)) {
+          await extra.taskStore.storeCancelledTaskResult(
+            task.taskId,
+            createCancelledTaskResult(config.errorCode, 'Task cancelled')
+          );
+        }
+
+        runTaskBackedToolInBackground(
+          config,
+          input as TInput,
+          task.taskId,
+          extra
+        );
+
+        return {
+          task,
+          _meta: {
+            'io.modelcontextprotocol/model-immediate-response': `${config.title} is running in the background.`,
+          },
+        };
+      },
+      getTask: async (_input: unknown, extra: TaskRequestHandlerExtra) => {
+        return await extra.taskStore.getTask(extra.taskId);
+      },
+      getTaskResult: async (
+        _input: unknown,
+        extra: TaskRequestHandlerExtra
+      ) => {
+        return await getTaskResultOrCancellation(
+          extra.taskStore,
+          extra.taskId,
+          config.errorCode
+        );
       },
     }
   );

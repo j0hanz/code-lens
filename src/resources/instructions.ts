@@ -71,7 +71,7 @@ export function buildServerInstructions(): string {
 ## CORE
 - Domain: Gemini-powered code analysis.
 - Capabilities: tools, resources (subscribe), prompts, logging, completions, tasks.
-- Tool task policy: \`generate_diff\` and \`load_file\` are sync-only (\`taskSupport: forbidden\`); all Gemini-backed tools advertise \`taskSupport: optional\`.
+- Tool task policy: \`generate_diff\` and \`load_file\` are sync-only (\`taskSupport: forbidden\`); all other tools advertise \`taskSupport: optional\`.
 - Tools: ${toolNames}
 
 ## PROMPTS
@@ -91,6 +91,7 @@ ${constraintLines}
 - Progress steps (0–6): starting → validating input → building prompt → calling model → validating response → finalizing → done.
 - Status messages update at each phase for task introspection.
 - Schema repair: on validation failure, retries with error feedback (configurable via \`GEMINI_SCHEMA_RETRIES\`).
+- Request TTLs are honored up to \`MAX_TASK_TTL_MS\`; default retention is \`TASK_TTL_MS\`.
 - Task terminal states: \`completed\`, \`failed\`, and \`cancelled\`.
 `;
 }

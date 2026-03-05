@@ -60,7 +60,7 @@ describe('tool contracts', () => {
     }
   });
 
-  it('marks sync prerequisite tools as task-forbidden and all other tools as task-optional', () => {
+  it('marks generate_diff/load_file task-forbidden and all other tools as task-optional', () => {
     const contracts = getToolContracts();
     const taskSupportByName = new Map(
       contracts.map((contract) => [contract.name, contract.taskSupport])

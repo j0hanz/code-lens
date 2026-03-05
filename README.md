@@ -21,6 +21,7 @@ Code Lens is a [Model Context Protocol](https://modelcontextprotocol.io/) server
 - **Logic verification** — verify algorithms using Gemini's code execution sandbox
 - **Structured outputs** — all tools return validated JSON via Zod v4 output schemas
 - **Web search** — Google Search with Grounding for up-to-date information retrieval
+- **Task lifecycle support** — every tool except `load_file` can run via MCP tasks with polling, cancellation, and progress updates
 
 ## Requirements
 
@@ -632,6 +633,12 @@ For more info, see [Kilo Code MCP docs](https://kilocode.ai/docs/features/mcp/us
 [Server] -- {content, structuredContent, isError?} --> [Client]
 ```
 
+### Task Lifecycle
+
+- `generate_diff` and `load_file` are sync-only. All other tools advertise `taskSupport: optional`.
+- Requestors may supply a task TTL. The server uses that value up to `MAX_TASK_TTL_MS`, or falls back to `TASK_TTL_MS` when omitted.
+- Cancelled tasks remain terminal as `cancelled`, and `tasks/result` returns a cancellation-shaped tool result.
+
 ## MCP Surface
 
 ### Tools
@@ -701,6 +708,8 @@ All Gemini-powered tools return validated `structuredContent` alongside text `co
 | `MAX_CONCURRENT_CALLS`         | `10`                     | Maximum concurrent Gemini API calls.                                                                        |
 | `MAX_CONCURRENT_BATCH_CALLS`   | `2`                      | Maximum concurrent batch Gemini calls.                                                                      |
 | `MAX_CONCURRENT_CALLS_WAIT_MS` | `2000`                   | Wait timeout for concurrency semaphore.                                                                     |
+| `TASK_TTL_MS`                  | `300000`                 | Default task result retention in milliseconds when the request does not specify `task.ttl`.                 |
+| `MAX_TASK_TTL_MS`              | `3600000`                | Upper bound for request-provided task TTL. Set to `0` to remove the cap.                                    |
 | `GEMINI_BATCH_MODE`            | `off`                    | Enable Gemini batch mode.                                                                                   |
 | `GEMINI_HARM_BLOCK_THRESHOLD`  | `BLOCK_NONE`             | Safety filter threshold (`BLOCK_NONE`, `BLOCK_ONLY_HIGH`, `BLOCK_MEDIUM_AND_ABOVE`, `BLOCK_LOW_AND_ABOVE`). |
 | `GEMINI_DIFF_CACHE_ENABLED`    | `false`                  | Enable Gemini context caching for large diffs.                                                              |

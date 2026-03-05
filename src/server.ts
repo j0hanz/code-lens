@@ -1,13 +1,13 @@
 import { readFileSync } from 'node:fs';
 import { findPackageJSON } from 'node:module';
 
-import { InMemoryTaskStore } from '@modelcontextprotocol/sdk/experimental/tasks/stores/in-memory.js';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
 import { disposeDiffStore, initDiffStore } from './lib/diff.js';
 import { getErrorMessage } from './lib/errors.js';
 import { disposeFileStore, initFileStore } from './lib/file-store.js';
+import { CodeLensTaskStore } from './lib/task-store.js';
 
 import { registerAllPrompts } from './prompts/index.js';
 import { registerAllResources } from './resources/index.js';
@@ -89,7 +89,7 @@ export interface ServerHandle {
   shutdown: () => Promise<void>;
 }
 
-function createMcpServer(taskStore: InMemoryTaskStore): McpServer {
+function createMcpServer(taskStore: CodeLensTaskStore): McpServer {
   return new McpServer(
     {
       name: SERVER_NAME,
@@ -112,7 +112,7 @@ function registerServerCapabilities(server: McpServer): void {
 }
 
 export function createServer(): ServerHandle {
-  const taskStore = new InMemoryTaskStore();
+  const taskStore = new CodeLensTaskStore();
   const server = createMcpServer(taskStore);
   registerServerCapabilities(server);
 

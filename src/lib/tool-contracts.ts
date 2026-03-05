@@ -70,6 +70,7 @@ interface StructuredToolRuntimeOptions {
 interface StructuredToolExecutionOptions extends StructuredToolRuntimeOptions {
   timeoutMs: ToolContract['timeoutMs'];
   maxOutputTokens: ToolContract['maxOutputTokens'];
+  taskSupport: Exclude<ToolContract['taskSupport'], 'forbidden'>;
 }
 
 export function buildStructuredToolRuntimeOptions(
@@ -96,6 +97,7 @@ export function buildStructuredToolExecutionOptions(
     ToolContract,
     | 'timeoutMs'
     | 'maxOutputTokens'
+    | 'taskSupport'
     | 'thinkingLevel'
     | 'temperature'
     | 'deterministicJson'
@@ -104,6 +106,10 @@ export function buildStructuredToolExecutionOptions(
   return {
     timeoutMs: contract.timeoutMs,
     maxOutputTokens: contract.maxOutputTokens,
+    taskSupport: contract.taskSupport as Exclude<
+      ToolContract['taskSupport'],
+      'forbidden'
+    >,
     ...buildStructuredToolRuntimeOptions(contract),
   };
 }
