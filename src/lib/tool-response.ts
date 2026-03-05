@@ -80,16 +80,17 @@ function toContentBlocks(
   const text = textContent ?? JSON.stringify(structured);
   const blocks: ToolContentBlock[] = [{ type: 'text', text }];
 
-  if (textContent) {
-    blocks.push({
-      type: 'resource',
-      resource: {
-        uri: 'internal://preview/result.md',
-        mimeType: 'text/markdown',
-        text: textContent,
-      },
-    });
-  }
+  // TODO: Re-enable embedded resource once VS Code textContent rendering is fixed.
+  // if (textContent) {
+  //   blocks.push({
+  //     type: 'resource',
+  //     resource: {
+  //       uri: 'internal://preview/result.md',
+  //       mimeType: 'text/markdown',
+  //       text: textContent,
+  //     },
+  //   });
+  // }
 
   return blocks;
 }
