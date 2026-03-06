@@ -75,6 +75,11 @@ export const WebSearchInputSchema = z.strictObject({
     .describe(
       'concise: 2-4 sentences. detailed: full explanation. bullets: list. code_focused: code snippets.'
     ),
+  maxChars: createOptionalBoundedInteger(
+    1,
+    50_000,
+    'Truncate response text to this many characters. Default: no truncation.'
+  ),
 });
 
 export const LoadFileInputSchema = z.strictObject({

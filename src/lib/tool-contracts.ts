@@ -36,7 +36,16 @@ export interface ToolContract {
   purpose: string;
   /** Set to 'none' for synchronous (non-Gemini) tools. */
   model: string;
-  /** MCP per-tool task negotiation value exposed in tools/list. */
+  /**
+   * MCP per-tool task execution support.
+   *
+   * - `'forbidden'`: Tool is synchronous; registered via `server.registerTool()`.
+   * - `'optional'` / `'required'`: Tool is task-capable; registered via
+   *   `registerStructuredToolTask()` which enables background execution.
+   *
+   * Not yet surfaced in the MCP `tools/list` response because the SDK does not
+   * expose the spec's `execution` field. Will be wired once SDK support lands.
+   */
   taskSupport: 'forbidden' | 'optional' | 'required';
   /** Set to 0 for synchronous (non-Gemini) tools. */
   timeoutMs: number;
@@ -216,6 +225,14 @@ const RESPONSE_STYLE_PARAM = createParam(
   false,
   "'concise' | 'detailed' | 'bullets' | 'code_focused'",
   'Output format. Default: concise (2-4 sentences).'
+);
+
+const MAX_CHARS_PARAM = createParam(
+  'maxChars',
+  'number',
+  false,
+  '1-50000',
+  'Truncate response text to this many characters. Default: no truncation.'
 );
 
 const TOOL_CONTRACTS = [
@@ -445,7 +462,12 @@ const TOOL_CONTRACTS = [
     taskSupport: 'optional',
     timeoutMs: DEFAULT_TIMEOUT_FLASH_MS,
     maxOutputTokens: DEFAULT_MAX_OUTPUT_TOKENS,
-    params: cloneParams(QUERY_PARAM, TOPIC_PARAM, RESPONSE_STYLE_PARAM),
+    params: cloneParams(
+      QUERY_PARAM,
+      TOPIC_PARAM,
+      RESPONSE_STYLE_PARAM,
+      MAX_CHARS_PARAM
+    ),
     outputShape: '{ok, result: {text, groundingMetadata}}',
     gotchas: [
       'Uses Gemini grounding — results depend on Google Search availability.',

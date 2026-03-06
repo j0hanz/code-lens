@@ -140,6 +140,12 @@ export function registerWebSearchTool(server: McpServer): void {
       systemInstruction: buildSystemInstruction(input),
       prompt: input.topic ? `[${input.topic}] ${input.query}` : input.query,
     }),
+    transformResult: (input, result) => {
+      if (input.maxChars !== undefined) {
+        return { ...result, text: result.text.slice(0, input.maxChars) };
+      }
+      return result;
+    },
     customGenerate: async (_promptParts, _ctx, opts) => {
       const result = await generateGroundedContent({
         prompt: _promptParts.prompt,

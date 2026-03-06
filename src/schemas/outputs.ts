@@ -48,6 +48,13 @@ const mergeRiskSchema = z
   .enum(MERGE_RISK_LEVELS)
   .describe('High-level merge risk.');
 
+/**
+ * Application-level error payload returned in `content[0].text` JSON.
+ *
+ * This is NOT the MCP protocol-level `Error` (JSON-RPC `{ code, message, data }`).
+ * The `kind` and `retryable` fields are custom extensions that help clients
+ * decide retry strategy and error categorization without parsing the message.
+ */
 const ErrorPayloadSchema = z
   .strictObject({
     code: z.string().describe('Stable error code for callers.'),

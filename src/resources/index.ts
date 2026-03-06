@@ -34,11 +34,23 @@ function createPatchContent(
   return { uri: uri.href, mimeType: PATCH_MIME_TYPE, text };
 }
 
-function createResourceAnnotations(priority: number): {
+function createResourceAnnotations(
+  priority: number,
+  lastModified?: string
+): {
   audience: 'assistant'[];
   priority: number;
+  lastModified?: string;
 } {
-  return { audience: [...RESOURCE_AUDIENCE], priority };
+  const annotations: {
+    audience: 'assistant'[];
+    priority: number;
+    lastModified?: string;
+  } = { audience: [...RESOURCE_AUDIENCE], priority };
+  if (lastModified) {
+    annotations.lastModified = lastModified;
+  }
+  return annotations;
 }
 
 function formatUnknownToolMessage(name: string): string {
