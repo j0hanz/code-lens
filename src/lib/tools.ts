@@ -657,6 +657,53 @@ class ToolExecutionRunner<
     return undefined;
   }
 
+  private async prepareRun(
+    input: unknown
+  ): Promise<{ inputRecord: TInput; ctx: ToolExecutionContext }> {
+    const inputRecord = parseToolInput<TInput>(
+      input,
+      this.config.fullInputSchema
+    );
+
+    const newContext = normalizeProgressContext(
+      this.config.progressContext?.(inputRecord)
+    );
+    this.reporter.updateContext(newContext);
+
+    await this.reporter.reportStep(STEP_STARTING, 'starting');
+
+    const ctx = this.createExecutionContext();
+    this.executionCtx = ctx;
+
+    this.throwIfAborted();
+    await this.reporter.reportStep(STEP_VALIDATING, 'validating');
+
+    return { inputRecord, ctx };
+  }
+
+  private async generateParsedResult(
+    inputRecord: TInput,
+    ctx: ToolExecutionContext
+  ): Promise<TResult> {
+    this.throwIfAborted();
+    await this.reporter.reportStep(STEP_BUILDING_PROMPT, 'preparing');
+
+    const promptParts = this.config.buildPrompt(inputRecord, ctx);
+    const { prompt, systemInstruction } = promptParts;
+
+    this.throwIfAborted();
+    await this.reporter.reportStep(STEP_CALLING_MODEL, 'analyzing');
+
+    if (this.config.customGenerate) {
+      return await this.config.customGenerate(promptParts, ctx, {
+        onLog: this.onLog,
+        ...(this.signal ? { signal: this.signal } : {}),
+      });
+    }
+
+    return await this.executeModelCall(systemInstruction, prompt);
+  }
+
   private async executeModelCallAttempt(
     systemInstruction: string,
     prompt: string,
@@ -819,47 +866,14 @@ class ToolExecutionRunner<
 
   async run(input: unknown): Promise<CallToolResult> {
     try {
-      const inputRecord = parseToolInput<TInput>(
-        input,
-        this.config.fullInputSchema
-      );
-
-      const newContext = normalizeProgressContext(
-        this.config.progressContext?.(inputRecord)
-      );
-      this.reporter.updateContext(newContext);
-
-      await this.reporter.reportStep(STEP_STARTING, 'starting');
-
-      const ctx = this.createExecutionContext();
-      this.executionCtx = ctx;
-
-      this.throwIfAborted();
-      await this.reporter.reportStep(STEP_VALIDATING, 'validating');
+      const { inputRecord, ctx } = await this.prepareRun(input);
 
       const validationError = await this.executeValidation(inputRecord, ctx);
       if (validationError) {
         return validationError;
       }
 
-      this.throwIfAborted();
-      await this.reporter.reportStep(STEP_BUILDING_PROMPT, 'preparing');
-
-      const promptParts = this.config.buildPrompt(inputRecord, ctx);
-      const { prompt, systemInstruction } = promptParts;
-
-      this.throwIfAborted();
-      await this.reporter.reportStep(STEP_CALLING_MODEL, 'analyzing');
-
-      let parsed: TResult;
-      if (this.config.customGenerate) {
-        parsed = await this.config.customGenerate(promptParts, ctx, {
-          onLog: this.onLog,
-          ...(this.signal ? { signal: this.signal } : {}),
-        });
-      } else {
-        parsed = await this.executeModelCall(systemInstruction, prompt);
-      }
+      const parsed = await this.generateParsedResult(inputRecord, ctx);
 
       this.throwIfAborted();
       await this.reporter.reportStep(STEP_FINALIZING, 'wrapping up');
@@ -896,10 +910,23 @@ function toProgressExtra(extra: CreateTaskRequestHandlerExtra): ProgressExtra {
   return extra as unknown as ProgressExtra;
 }
 
-function createGeminiLogger(
+export function canSendLoggingMessages(server: McpServer): boolean {
+  const serverWithCapabilities = server.server as {
+    getClientCapabilities?: () => { logging?: unknown } | undefined;
+  };
+  return (
+    serverWithCapabilities.getClientCapabilities?.()?.logging !== undefined
+  );
+}
+
+export function createGeminiLogger(
   server: McpServer
 ): (level: string, data: unknown) => Promise<void> {
   return async (level, data) => {
+    if (!canSendLoggingMessages(server)) {
+      return;
+    }
+
     try {
       await server.sendLoggingMessage({
         level: toLoggingLevel(level),
@@ -951,6 +978,141 @@ function createCancelledTaskResult(
   );
 }
 
+type BackgroundTaskFactoryExtra = Pick<
+  CreateTaskRequestHandlerExtra,
+  'taskStore' | 'taskRequestedTtl' | 'signal'
+>;
+
+interface BackgroundTaskExecutionContext {
+  task: Awaited<ReturnType<RequestTaskStore['createTask']>>;
+  signal: AbortSignal;
+}
+
+async function createBackgroundTaskExecutionContext(
+  extra: BackgroundTaskFactoryExtra
+): Promise<BackgroundTaskExecutionContext> {
+  const { signal: baseSignal, taskRequestedTtl, taskStore } = extra;
+
+  const task = await taskStore.createTask({
+    ttl: resolveTaskTtlMs(taskRequestedTtl),
+    pollInterval: taskPollIntervalMsConfig.get(),
+  });
+
+  let signal: AbortSignal = baseSignal;
+  if (hasCancelledTaskResultStore(taskStore)) {
+    const taskSignal = taskStore.getTaskAbortSignal(task.taskId);
+    signal = AbortSignal.any([baseSignal, taskSignal]);
+  }
+
+  return { task, signal };
+}
+
+function createImmediateTaskResponse(
+  title: string,
+  task: Awaited<ReturnType<RequestTaskStore['createTask']>>
+): {
+  task: Awaited<ReturnType<RequestTaskStore['createTask']>>;
+  _meta: { 'io.modelcontextprotocol/model-immediate-response': string };
+} {
+  return {
+    task,
+    _meta: {
+      'io.modelcontextprotocol/model-immediate-response': `${title} is running in the background.`,
+    },
+  };
+}
+
+async function storeCancelledTaskState(
+  store: RequestTaskStore,
+  taskId: string,
+  errorCode: string,
+  message: string
+): Promise<void> {
+  if (hasCancelledTaskResultStore(store)) {
+    await store
+      .storeCancelledTaskResult(
+        taskId,
+        createCancelledTaskResult(errorCode, message)
+      )
+      .catch(() => {});
+  }
+
+  if (hasTaskStatusUpdate(store)) {
+    await store.updateTaskStatus(taskId, 'cancelled', message).catch(() => {});
+  }
+}
+
+async function storeBackgroundTaskFailure(
+  store: RequestTaskStore,
+  taskId: string,
+  errorCode: string,
+  error: unknown,
+  signal?: AbortSignal
+): Promise<void> {
+  const errorMessage = getErrorMessage(error);
+  const isAbort =
+    error != null &&
+    typeof error === 'object' &&
+    'name' in error &&
+    (error as { name: string }).name === 'AbortError';
+  const isCancelled = (signal?.aborted ?? false) || isAbort;
+
+  try {
+    if (isCancelled) {
+      await storeCancelledTaskState(store, taskId, errorCode, errorMessage);
+      return;
+    }
+
+    if (hasTaskStatusUpdate(store)) {
+      await store.updateTaskStatus(taskId, 'failed', errorMessage);
+    }
+  } catch {
+    // Status update failed — nothing more we can do
+  }
+}
+
+function runBackgroundTask(
+  execute: () => Promise<CallToolResult>,
+  config: {
+    taskId: string;
+    store: RequestTaskStore;
+    errorCode: string;
+    signal?: AbortSignal;
+    onSuccess?: (result: CallToolResult) => Promise<void>;
+    onFailure?: (error: unknown) => Promise<void>;
+  }
+): void {
+  if (config.signal?.aborted) {
+    void storeCancelledTaskState(
+      config.store,
+      config.taskId,
+      config.errorCode,
+      'Cancelled before execution started'
+    );
+    return;
+  }
+
+  void execute()
+    .then(async (result) => {
+      if (config.onSuccess) {
+        await config.onSuccess(result);
+      }
+    })
+    .catch(async (error: unknown) => {
+      if (config.onFailure) {
+        await config.onFailure(error);
+      }
+
+      await storeBackgroundTaskFailure(
+        config.store,
+        config.taskId,
+        config.errorCode,
+        error,
+        config.signal
+      );
+    });
+}
+
 async function getTaskResultOrCancellation(
   taskStore: RequestTaskStore,
   taskId: string,
@@ -962,74 +1124,6 @@ async function getTaskResultOrCancellation(
   }
 
   return (await taskStore.getTaskResult(taskId)) as CallToolResult;
-}
-
-function runToolTaskInBackground<
-  TInput extends object,
-  TResult extends object,
-  TFinal extends TResult,
->(
-  runner: ToolExecutionRunner<TInput, TResult, TFinal>,
-  input: unknown,
-  taskId: string,
-  store: RequestTaskStore,
-  errorCode: string,
-  signal?: AbortSignal
-): void {
-  if (signal?.aborted) {
-    if (hasCancelledTaskResultStore(store)) {
-      store
-        .storeCancelledTaskResult(
-          taskId,
-          createCancelledTaskResult(
-            errorCode,
-            'Cancelled before execution started'
-          )
-        )
-        .catch(() => {});
-    }
-    if (hasTaskStatusUpdate(store)) {
-      store
-        .updateTaskStatus(
-          taskId,
-          'cancelled',
-          'Cancelled before execution started'
-        )
-        .catch(() => {});
-    }
-    return;
-  }
-
-  runner.run(input).catch(async (error: unknown) => {
-    // Safety net: run() swallows errors via handleRunFailure, so this only fires
-    // if handleRunFailure itself throws (e.g. reporter/store internal crash).
-    const isAbort =
-      error != null &&
-      typeof error === 'object' &&
-      'name' in error &&
-      (error as { name: string }).name === 'AbortError';
-    const isCancelled = (signal?.aborted ?? false) || isAbort;
-
-    try {
-      if (isCancelled && hasCancelledTaskResultStore(store)) {
-        await store
-          .storeCancelledTaskResult(
-            taskId,
-            createCancelledTaskResult(errorCode, getErrorMessage(error))
-          )
-          .catch(() => {});
-      }
-      if (hasTaskStatusUpdate(store)) {
-        await store.updateTaskStatus(
-          taskId,
-          isCancelled ? 'cancelled' : 'failed',
-          getErrorMessage(error)
-        );
-      }
-    } catch {
-      // Status update failed — nothing more we can do
-    }
-  });
 }
 
 export function registerStructuredToolTask<
@@ -1067,21 +1161,8 @@ export function registerStructuredToolTask<
         input: unknown,
         extra: CreateTaskRequestHandlerExtra
       ) => {
-        const task = await extra.taskStore.createTask({
-          ttl: resolveTaskTtlMs(extra.taskRequestedTtl),
-          pollInterval: taskPollIntervalMsConfig.get(),
-        });
-
-        let compoundSignal: AbortSignal = extra.signal;
-        if (hasCancelledTaskResultStore(extra.taskStore)) {
-          await extra.taskStore.storeCancelledTaskResult(
-            task.taskId,
-            createCancelledTaskResult(config.errorCode, 'Task cancelled')
-          );
-
-          const taskSignal = extra.taskStore.getTaskAbortSignal(task.taskId);
-          compoundSignal = AbortSignal.any([extra.signal, taskSignal]);
-        }
+        const { task, signal } =
+          await createBackgroundTaskExecutionContext(extra);
 
         const runner = new ToolExecutionRunner(
           config,
@@ -1094,24 +1175,17 @@ export function registerStructuredToolTask<
               extra.taskStore
             ),
           },
-          compoundSignal
+          signal
         );
 
-        runToolTaskInBackground(
-          runner,
-          input,
-          task.taskId,
-          extra.taskStore,
-          config.errorCode,
-          compoundSignal
-        );
+        runBackgroundTask(() => runner.run(input), {
+          taskId: task.taskId,
+          store: extra.taskStore,
+          errorCode: config.errorCode,
+          signal,
+        });
 
-        return {
-          task,
-          _meta: {
-            'io.modelcontextprotocol/model-immediate-response': `${config.title} is running in the background.`,
-          },
-        };
+        return createImmediateTaskResponse(config.title, task);
       },
       getTask: async (input: unknown, extra: TaskRequestHandlerExtra) => {
         return await extra.taskStore.getTask(extra.taskId);
@@ -1157,37 +1231,36 @@ function runTaskBackedToolInBackground<TInput>(
   taskId: string,
   extra: CreateTaskRequestHandlerExtra
 ): void {
-  void Promise.resolve(config.handler(input, toProgressExtra(extra)))
-    .then(async (result) => {
-      try {
-        await extra.taskStore.storeTaskResult(
-          taskId,
-          normalizeTaskResultStatus(result),
-          result
-        );
-      } catch (error: unknown) {
-        if (hasTaskStatusUpdate(extra.taskStore)) {
-          await extra.taskStore
-            .updateTaskStatus(taskId, 'failed', getErrorMessage(error))
-            .catch(() => {});
+  runBackgroundTask(
+    async () =>
+      await Promise.resolve(config.handler(input, toProgressExtra(extra))),
+    {
+      taskId,
+      store: extra.taskStore,
+      errorCode: config.errorCode,
+      signal: extra.signal,
+      onSuccess: async (result) => {
+        try {
+          await extra.taskStore.storeTaskResult(
+            taskId,
+            normalizeTaskResultStatus(result),
+            result
+          );
+        } catch (error: unknown) {
+          if (hasTaskStatusUpdate(extra.taskStore)) {
+            await extra.taskStore
+              .updateTaskStatus(taskId, 'failed', getErrorMessage(error))
+              .catch(() => {});
+          }
         }
-      }
-    })
-    .catch(async (error: unknown) => {
-      const errorMessage = getErrorMessage(error);
-      const errorMeta = classifyErrorMeta(error, errorMessage);
-      const isCancelled = errorMeta.kind === 'cancelled';
+      },
+      onFailure: async (error) => {
+        const errorMessage = getErrorMessage(error);
+        const errorMeta = classifyErrorMeta(error, errorMessage);
+        if (errorMeta.kind === 'cancelled') {
+          return;
+        }
 
-      if (isCancelled) {
-        if (hasCancelledTaskResultStore(extra.taskStore)) {
-          await extra.taskStore
-            .storeCancelledTaskResult(
-              taskId,
-              createCancelledTaskResult(config.errorCode, errorMessage)
-            )
-            .catch(() => {});
-        }
-      } else {
         await extra.taskStore
           .storeTaskResult(
             taskId,
@@ -1200,18 +1273,9 @@ function runTaskBackedToolInBackground<TInput>(
             )
           )
           .catch(() => {});
-      }
-
-      if (hasTaskStatusUpdate(extra.taskStore)) {
-        await extra.taskStore
-          .updateTaskStatus(
-            taskId,
-            isCancelled ? 'cancelled' : 'failed',
-            errorMessage
-          )
-          .catch(() => {});
-      }
-    });
+      },
+    }
+  );
 }
 
 export function registerTaskBackedTool<
@@ -1240,33 +1304,15 @@ export function registerTaskBackedTool<
         input: unknown,
         extra: CreateTaskRequestHandlerExtra
       ) => {
-        const task = await extra.taskStore.createTask({
-          ttl: resolveTaskTtlMs(extra.taskRequestedTtl),
-          pollInterval: taskPollIntervalMsConfig.get(),
-        });
-
-        let compoundSignal: AbortSignal = extra.signal;
-        if (hasCancelledTaskResultStore(extra.taskStore)) {
-          await extra.taskStore.storeCancelledTaskResult(
-            task.taskId,
-            createCancelledTaskResult(config.errorCode, 'Task cancelled')
-          );
-
-          const taskSignal = extra.taskStore.getTaskAbortSignal(task.taskId);
-          compoundSignal = AbortSignal.any([extra.signal, taskSignal]);
-        }
+        const { task, signal } =
+          await createBackgroundTaskExecutionContext(extra);
 
         runTaskBackedToolInBackground(config, input as TInput, task.taskId, {
           ...extra,
-          signal: compoundSignal,
+          signal,
         });
 
-        return {
-          task,
-          _meta: {
-            'io.modelcontextprotocol/model-immediate-response': `${config.title} is running in the background.`,
-          },
-        };
+        return createImmediateTaskResponse(config.title, task);
       },
       getTask: async (_input: unknown, extra: TaskRequestHandlerExtra) => {
         return await extra.taskStore.getTask(extra.taskId);

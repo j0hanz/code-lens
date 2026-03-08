@@ -14,7 +14,9 @@ import {
 } from '../src/lib/format.js';
 import { toBulletedList, toInlineCode } from '../src/lib/format.js';
 import {
+  canSendLoggingMessages,
   createErrorToolResponse,
+  createGeminiLogger,
   createToolResponse,
 } from '../src/lib/tools.js';
 import { DefaultOutputSchema } from '../src/schemas/outputs.js';
@@ -197,5 +199,61 @@ describe('tool-response', () => {
     assert.equal(parsed.error?.retryable, true);
     assert.equal(parsed.error?.kind, 'internal');
     assert.deepEqual(parsed.result, { reason: 'unit' });
+  });
+});
+
+describe('logging helpers', () => {
+  it('detects when client logging capability is unavailable', () => {
+    const server = {
+      server: {
+        getClientCapabilities: () => ({}),
+      },
+      sendLoggingMessage: async () => {
+        throw new Error('should not be called');
+      },
+    };
+
+    assert.equal(canSendLoggingMessages(server as never), false);
+  });
+
+  it('skips log emission when client logging capability is unavailable', async () => {
+    let called = false;
+    const server = {
+      server: {
+        getClientCapabilities: () => ({}),
+      },
+      sendLoggingMessage: async () => {
+        called = true;
+      },
+    };
+
+    const log = createGeminiLogger(server as never);
+    await log('info', { event: 'test' });
+
+    assert.equal(called, false);
+  });
+
+  it('emits logs when client logging capability is available', async () => {
+    const calls: Array<{ level: string; logger: string; data: unknown }> = [];
+    const server = {
+      server: {
+        getClientCapabilities: () => ({ logging: {} }),
+      },
+      sendLoggingMessage: async (payload: {
+        level: string;
+        logger: string;
+        data: unknown;
+      }) => {
+        calls.push(payload);
+      },
+    };
+
+    const log = createGeminiLogger(server as never);
+    await log('info', { event: 'test' });
+
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0]?.level, 'info');
+    assert.equal(calls[0]?.logger, 'gemini');
+    assert.deepEqual(calls[0]?.data, { event: 'test' });
   });
 });

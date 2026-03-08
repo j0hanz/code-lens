@@ -14,6 +14,7 @@ import { z } from 'zod';
 import { CodeLensTaskStore } from '../src/lib/task-store.js';
 import {
   createToolResponse,
+  registerStructuredToolTask,
   registerTaskBackedTool,
 } from '../src/lib/tools.js';
 import { createToolOutputSchema } from '../src/schemas/outputs.js';
@@ -26,9 +27,19 @@ const SLOW_TOOL_RESULT = z.object({
   done: z.literal(true),
 });
 
+const STRUCTURED_TOOL_INPUT = z.object({
+  waitMs: z.number().int().min(0).max(2_000),
+});
+
+const STRUCTURED_TOOL_RESULT = z.object({
+  done: z.literal(true),
+  label: z.string().min(1),
+});
+
 async function createTaskTestServer(): Promise<{
   server: McpServer;
   client: Client;
+  taskStore: CodeLensTaskStore;
   close: () => Promise<void>;
 }> {
   const taskStore = new CodeLensTaskStore();
@@ -81,6 +92,37 @@ async function createTaskTestServer(): Promise<{
     },
   });
 
+  registerStructuredToolTask(server, {
+    name: 'structured_tool',
+    title: 'Structured Tool',
+    description: 'Structured background tool for task lifecycle tests.',
+    inputSchema: STRUCTURED_TOOL_INPUT,
+    fullInputSchema: STRUCTURED_TOOL_INPUT,
+    resultSchema: STRUCTURED_TOOL_RESULT,
+    errorCode: 'E_STRUCTURED_TOOL',
+    taskSupport: 'required',
+    customGenerate: async (_promptParts, _ctx, opts) => {
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(resolve, 50);
+
+        opts.signal?.addEventListener(
+          'abort',
+          () => {
+            clearTimeout(timer);
+            reject(new DOMException('Task cancelled', 'AbortError'));
+          },
+          { once: true }
+        );
+      });
+
+      return { done: true as const, label: 'structured' };
+    },
+    buildPrompt: () => ({
+      systemInstruction: 'Return structured test data.',
+      prompt: 'Emit a fixed success result.',
+    }),
+  });
+
   const [clientTransport, serverTransport] =
     InMemoryTransport.createLinkedPair();
   const client = new Client(
@@ -101,7 +143,7 @@ async function createTaskTestServer(): Promise<{
     server.connect(serverTransport),
     client.connect(clientTransport),
   ]);
-  return { server, client, close };
+  return { server, client, taskStore, close };
 }
 
 describe('task execution lifecycle', () => {
@@ -163,6 +205,37 @@ describe('task execution lifecycle', () => {
     await stream.return(undefined);
   });
 
+  it('does not expose a cancellation result before the task reaches a terminal state', async () => {
+    const handle = await createTaskTestServer();
+    close = handle.close;
+
+    const stream = handle.client.experimental.tasks.callToolStream(
+      {
+        name: 'slow_tool',
+        arguments: { waitMs: 1_000 },
+      },
+      CallToolResultSchema,
+      { task: { ttl: 10_000 } }
+    );
+
+    const firstMessage = await stream.next();
+    assert.equal(firstMessage.done, false);
+
+    const created = firstMessage.value as {
+      type: string;
+      task: { taskId: string };
+    };
+    assert.equal(created.type, 'taskCreated');
+
+    await assert.rejects(
+      async () => await handle.taskStore.getTaskResult(created.task.taskId),
+      /has no result stored/
+    );
+
+    await handle.client.experimental.tasks.cancelTask(created.task.taskId);
+    await stream.return(undefined);
+  });
+
   it('created task includes pollInterval from server config', async () => {
     const handle = await createTaskTestServer();
     close = handle.close;
@@ -189,6 +262,41 @@ describe('task execution lifecycle', () => {
       created.task.pollInterval! > 0,
       'pollInterval should be positive'
     );
+
+    await stream.return(undefined);
+  });
+
+  it('stores a result for structured task-backed tools', async () => {
+    const handle = await createTaskTestServer();
+    close = handle.close;
+
+    const stream = handle.client.experimental.tasks.callToolStream(
+      {
+        name: 'structured_tool',
+        arguments: { waitMs: 10 },
+      },
+      CallToolResultSchema,
+      { task: { ttl: 10_000 } }
+    );
+
+    const firstMessage = await stream.next();
+    assert.equal(firstMessage.done, false);
+
+    const created = firstMessage.value as {
+      type: string;
+      task: { taskId: string };
+    };
+    assert.equal(created.type, 'taskCreated');
+
+    const result = await handle.client.experimental.tasks.getTaskResult(
+      created.task.taskId,
+      CallToolResultSchema
+    );
+
+    assert.equal(result.isError, undefined);
+    const firstBlock = result.content[0];
+    const firstText = firstBlock?.type === 'text' ? firstBlock.text : '';
+    assert.match(firstText, /structured/i);
 
     await stream.return(undefined);
   });
