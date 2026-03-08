@@ -553,6 +553,7 @@ export type WebSearchResult = z.infer<typeof WebSearchResultSchema>;
 
 export const GenerateDiffResultSchema = z.strictObject({
   diffRef: z.string().describe('URI to the cached diff resource.'),
+  diffHash: z.string().describe('SHA-256 hash of the diff content.'),
   stats: z
     .strictObject({
       files: z.int().min(0).describe('Number of files changed.'),
@@ -563,6 +564,7 @@ export const GenerateDiffResultSchema = z.strictObject({
   generatedAt: z.string().describe('ISO 8601 timestamp.'),
   mode: z.enum(DIFF_MODES).describe('Diff mode used.'),
   message: z.string().describe('Human-readable summary.'),
+  elapsedMs: z.int().min(0).describe('Time taken to generate diff in ms.'),
 });
 
 export const LoadFileResultSchema = z.strictObject({

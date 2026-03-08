@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { type StructuredPatch as ParsedFile, parsePatch } from 'diff';
 
@@ -174,7 +176,10 @@ export function parseDiffFiles(diff: string): ParsedFile[] {
 }
 
 function cleanPath(path: string): string {
-  if (path.startsWith('a/') || path.startsWith('b/')) {
+  if (
+    (path.charCodeAt(0) === 97 /* a */ || path.charCodeAt(0) === 98) /* b */ &&
+    path.charCodeAt(1) === 47 /* / */
+  ) {
     return path.slice(2);
   }
   return path;
@@ -212,8 +217,9 @@ function getFileStats(file: ParsedFile): { added: number; deleted: number } {
   let deleted = 0;
   for (const hunk of file.hunks) {
     for (const line of hunk.lines) {
-      if (line.startsWith('+')) added++;
-      else if (line.startsWith('-')) deleted++;
+      const first = line.charCodeAt(0);
+      if (first === 43 /* + */) added++;
+      else if (first === 45 /* - */) deleted++;
     }
   }
   return { added, deleted };
@@ -322,12 +328,17 @@ export const diffStaleWarningMs = createCachedEnvInt(
 
 export interface DiffSlot {
   diff: string;
+  diffHash: string;
   parsedFiles: readonly ParsedFile[];
   stats: DiffStats;
   generatedAt: string;
   /** Numeric epoch ms cached at creation to avoid repeated Date parsing. */
   generatedAtMs: number;
   mode: string;
+}
+
+export function computeDiffHash(diff: string): string {
+  return createHash('sha256').update(diff).digest('hex');
 }
 
 type SendResourceUpdated = (params: { uri: string }) => Promise<void>;

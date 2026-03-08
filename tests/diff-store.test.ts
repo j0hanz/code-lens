@@ -14,6 +14,7 @@ import {
 function createSlot(generatedAt: string) {
   return {
     diff: 'diff --git a/a.ts b/a.ts\n@@ -1 +1 @@\n-a\n+b\n',
+    diffHash: 'a-hash',
     parsedFiles: [],
     stats: { files: 1, added: 1, deleted: 1 },
     generatedAt,

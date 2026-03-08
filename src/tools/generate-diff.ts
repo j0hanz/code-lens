@@ -1,10 +1,12 @@
 import { execFile } from 'node:child_process';
+import { performance } from 'node:perf_hooks';
 import { promisify } from 'node:util';
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
 import {
   cleanDiff,
+  computeDiffHash,
   computeDiffStatsFromFiles,
   DIFF_RESOURCE_URI,
   isEmptyDiff,
@@ -162,12 +164,13 @@ async function generateDiffToolResponse(
   | ReturnType<typeof createToolResponse>
   | ReturnType<typeof createErrorToolResponse>
 > {
+  const perfStart = performance.now();
   try {
     const diff = await runGitDiff(mode, signal);
     if (isEmptyDiff(diff)) {
       return createNoChangesResponse(mode);
     }
-    return createSuccessResponse(diff, mode);
+    return createSuccessResponse(diff, mode, perfStart);
   } catch (error: unknown) {
     if (error instanceof DOMException && error.name === 'AbortError') {
       throw error;
@@ -189,7 +192,8 @@ function createNoChangesResponse(
 
 function createSuccessResponse(
   diff: string,
-  mode: DiffMode
+  mode: DiffMode,
+  perfStart: number
 ):
   | ReturnType<typeof createToolResponse>
   | ReturnType<typeof createErrorToolResponse> {
@@ -200,21 +204,33 @@ function createSuccessResponse(
 
   const parsedFiles = parseDiffFiles(diff);
   const stats = computeDiffStatsFromFiles(parsedFiles);
+  const diffHash = computeDiffHash(diff);
   const generatedAtMs = Date.now();
   const generatedAt = new Date(generatedAtMs).toISOString();
 
-  storeDiff({ diff, parsedFiles, stats, generatedAt, generatedAtMs, mode });
+  storeDiff({
+    diff,
+    diffHash,
+    parsedFiles,
+    stats,
+    generatedAt,
+    generatedAtMs,
+    mode,
+  });
 
-  const summary = `Diff cached: ${stats.files} files (+${stats.added}, -${stats.deleted})`;
+  const elapsedMs = Math.round(performance.now() - perfStart);
+  const summary = `Diff cached: ${stats.files} files (+${stats.added}, -${stats.deleted}) in ${elapsedMs}ms`;
   return createToolResponse(
     {
       ok: true as const,
       result: {
         diffRef: DIFF_RESOURCE_URI,
+        diffHash,
         stats,
         generatedAt,
         mode,
         message: summary,
+        elapsedMs,
       },
     },
     summary
