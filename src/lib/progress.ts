@@ -56,35 +56,11 @@ class ProgressReporter {
       return;
     }
 
-    let { current } = payload;
-    if (current <= this.lastCurrent && current < (payload.total ?? Infinity)) {
-      current = this.lastCurrent + 0.01;
-    }
-    current = Math.max(current, this.lastCurrent);
-
-    const total =
-      payload.total !== undefined
-        ? Math.max(payload.total, current)
-        : undefined;
-
-    const progressPayload: ProgressPayload = { current };
-    if (total !== undefined) {
-      progressPayload.total = total;
-    }
-    if (payload.message !== undefined) {
-      progressPayload.message = payload.message;
-    }
-
-    const params: ProgressNotificationParams = {
-      progressToken: this.progressToken,
-      progress: progressPayload.current,
-      ...(progressPayload.total !== undefined
-        ? { total: progressPayload.total }
-        : {}),
-      ...(progressPayload.message !== undefined
-        ? { message: progressPayload.message }
-        : {}),
-    };
+    const progressPayload = normalizeProgressPayload(payload, this.lastCurrent);
+    const params = createProgressNotificationParams(
+      this.progressToken,
+      progressPayload
+    );
 
     await this.extra
       .sendNotification({ method: 'notifications/progress', params })
@@ -92,11 +68,46 @@ class ProgressReporter {
         // Progress notifications are best-effort; never fail tool execution.
       });
 
-    this.lastCurrent = current;
-    if (total !== undefined && total === current) {
+    this.lastCurrent = progressPayload.current;
+    if (
+      progressPayload.total !== undefined &&
+      progressPayload.total === progressPayload.current
+    ) {
       this.didSendTerminal = true;
     }
   }
+}
+
+function normalizeProgressPayload(
+  payload: ProgressPayload,
+  lastCurrent: number
+): ProgressPayload {
+  let { current } = payload;
+  if (current <= lastCurrent && current < (payload.total ?? Infinity)) {
+    current = lastCurrent + 0.01;
+  }
+  current = Math.max(current, lastCurrent);
+
+  const total =
+    payload.total !== undefined ? Math.max(payload.total, current) : undefined;
+
+  return {
+    current,
+    ...(total !== undefined ? { total } : {}),
+    ...(payload.message !== undefined ? { message: payload.message } : {}),
+  };
+}
+
+function createProgressNotificationParams(
+  progressToken: ProgressToken,
+  payload: ProgressPayload
+): ProgressNotificationParams {
+  return {
+    progressToken,
+    progress: payload.current,
+    ...(payload.total !== undefined ? { total: payload.total } : {}),
+    ...(payload.message !== undefined ? { message: payload.message } : {}),
+  };
 }
 
 function createProgressReporter(
@@ -140,22 +151,6 @@ export function normalizeProgressContext(context: string | undefined): string {
     `[warn] Progress context truncated from ${String(compact.length)} to 80 chars`
   );
   return `${compact.slice(0, 77)}...`;
-}
-
-function formatProgressStep(
-  toolName: string,
-  context: string,
-  metadata: string
-): string {
-  return formatProgressMessage(toolName, context, metadata);
-}
-
-function formatProgressCompletion(
-  toolName: string,
-  context: string,
-  outcome: string
-): string {
-  return formatProgressMessage(toolName, context, outcome);
 }
 
 function capitalize(s: string): string {
@@ -216,37 +211,22 @@ export async function sendSingleStepProgress(
   await reporter({
     current,
     total: 1,
-    message:
-      current === 0
-        ? formatProgressStep(toolName, context, state)
-        : formatProgressCompletion(toolName, context, state),
+    message: formatProgressMessage(toolName, context, state),
   });
 }
 
-async function reportProgressStepUpdate(
+async function reportProgressUpdate(
   reportProgress: (payload: ProgressPayload) => Promise<void>,
   toolName: string,
   context: string,
   current: number,
+  total: number,
   metadata: string
 ): Promise<void> {
   await reportProgress({
     current,
-    total: TASK_PROGRESS_TOTAL,
-    message: formatProgressStep(toolName, context, metadata),
-  });
-}
-
-async function reportProgressCompletionUpdate(
-  reportProgress: (payload: ProgressPayload) => Promise<void>,
-  toolName: string,
-  context: string,
-  outcome: string
-): Promise<void> {
-  await reportProgress({
-    current: TASK_PROGRESS_TOTAL,
-    total: TASK_PROGRESS_TOTAL,
-    message: formatProgressCompletion(toolName, context, outcome),
+    total,
+    message: formatProgressMessage(toolName, context, metadata),
   });
 }
 
@@ -258,11 +238,12 @@ async function reportSchemaRetryProgressBestEffort(
   maxRetries: number
 ): Promise<void> {
   try {
-    await reportProgressStepUpdate(
+    await reportProgressUpdate(
       reportProgress,
       toolName,
       context,
       STEP_VALIDATING_RESPONSE + retryCount / (maxRetries + 1),
+      TASK_PROGRESS_TOTAL,
       `refining (${retryCount}/${maxRetries})`
     );
   } catch {
@@ -356,21 +337,24 @@ export class RunReporter {
   }
 
   async reportStep(step: number, message: string): Promise<void> {
-    await reportProgressStepUpdate(
+    await reportProgressUpdate(
       this.reportProgress,
       this.toolName,
       this.progressContext,
       step,
+      TASK_PROGRESS_TOTAL,
       message
     );
     await this.updateStatus(message);
   }
 
   async reportCompletion(outcome: string): Promise<void> {
-    await reportProgressCompletionUpdate(
+    await reportProgressUpdate(
       this.reportProgress,
       this.toolName,
       this.progressContext,
+      TASK_PROGRESS_TOTAL,
+      TASK_PROGRESS_TOTAL,
       outcome
     );
   }

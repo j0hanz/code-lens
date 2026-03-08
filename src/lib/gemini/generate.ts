@@ -154,6 +154,42 @@ function getPromptWithFunctionCallingContext(
   return request.prompt;
 }
 
+function addGenerationTool(
+  tools: NonNullable<GenerateContentConfig['tools']>,
+  tool: NonNullable<GenerateContentConfig['tools']>[number] | undefined
+): void {
+  if (tool) {
+    tools.push(tool);
+  }
+}
+
+function buildGenerationTools(
+  request: GeminiStructuredRequest
+): NonNullable<GenerateContentConfig['tools']> {
+  const tools: NonNullable<GenerateContentConfig['tools']> = [];
+
+  addGenerationTool(
+    tools,
+    request.useGrounding ? { googleSearch: {} } : undefined
+  );
+  addGenerationTool(
+    tools,
+    request.useCodeExecution ? { codeExecution: {} } : undefined
+  );
+  addGenerationTool(
+    tools,
+    request.fileSearchStoreNames && request.fileSearchStoreNames.length > 0
+      ? {
+          fileSearch: {
+            fileSearchStoreNames: [...request.fileSearchStoreNames],
+          },
+        }
+      : undefined
+  );
+
+  return tools;
+}
+
 function buildGenerationConfig(
   request: GeminiStructuredRequest,
   abortSignal?: AbortSignal
@@ -173,20 +209,7 @@ function buildGenerationConfig(
     ...(abortSignal ? { abortSignal } : {}),
   };
 
-  const tools: GenerateContentConfig['tools'] = [];
-  if (request.useGrounding) {
-    tools.push({ googleSearch: {} });
-  }
-  if (request.useCodeExecution) {
-    tools.push({ codeExecution: {} });
-  }
-  if (request.fileSearchStoreNames && request.fileSearchStoreNames.length > 0) {
-    tools.push({
-      fileSearch: {
-        fileSearchStoreNames: [...request.fileSearchStoreNames],
-      },
-    });
-  }
+  const tools = buildGenerationTools(request);
 
   if (tools.length > 0) {
     config.tools = tools;
@@ -458,14 +481,7 @@ async function waitBeforeRetry(
   });
 
   throwIfRequestCancelled(requestSignal);
-
-  try {
-    await sleep(delayMs, undefined, { ref: false, signal: requestSignal });
-  } catch (sleepError: unknown) {
-    throwIfRequestCancelled(requestSignal);
-
-    throw sleepError;
-  }
+  await sleepWithCancellation(delayMs, requestSignal);
 }
 
 async function throwGeminiFailure(
@@ -491,6 +507,18 @@ async function throwGeminiFailure(
 
 function countAttemptsMade(attempt: number): number {
   return attempt + 1;
+}
+
+async function sleepWithCancellation(
+  delayMs: number,
+  requestSignal?: AbortSignal
+): Promise<void> {
+  try {
+    await sleep(delayMs, undefined, { ref: false, signal: requestSignal });
+  } catch (sleepError: unknown) {
+    throwIfRequestCancelled(requestSignal);
+    throw sleepError;
+  }
 }
 
 async function runWithRetries(
@@ -529,32 +557,27 @@ function isInlineBatchMode(mode: ExecutionMode): mode is 'inline' {
   return mode === 'inline';
 }
 
+function getLimiterForMode(mode: ExecutionMode): ConcurrencyLimiter {
+  return isInlineBatchMode(mode) ? batchCallLimiter : callLimiter;
+}
+
 async function acquireQueueSlot(
   mode: ExecutionMode,
   requestSignal?: AbortSignal
 ): Promise<{ queueWaitMs: number; waitingCalls: number }> {
   const queueWaitStartedAt = performance.now();
+  const limiter = getLimiterForMode(mode);
 
-  if (isInlineBatchMode(mode)) {
-    await batchCallLimiter.acquire(requestSignal);
-  } else {
-    await callLimiter.acquire(requestSignal);
-  }
+  await limiter.acquire(requestSignal);
 
   return {
     queueWaitMs: Math.round(performance.now() - queueWaitStartedAt),
-    waitingCalls: isInlineBatchMode(mode)
-      ? batchCallLimiter.pendingCount
-      : callLimiter.pendingCount,
+    waitingCalls: limiter.pendingCount,
   };
 }
 
 function releaseQueueSlot(mode: ExecutionMode): void {
-  if (isInlineBatchMode(mode)) {
-    batchCallLimiter.release();
-    return;
-  }
-  callLimiter.release();
+  getLimiterForMode(mode).release();
 }
 
 interface BatchApiClient {
@@ -590,51 +613,56 @@ function extractFirstString(
   return undefined;
 }
 
-const BatchHelper = {
-  getState(payload: unknown): string | undefined {
-    const val = extractFirstString(payload, [['state'], ['metadata', 'state']]);
-    return val ? (toUpperStringCode(val) ?? undefined) : undefined;
-  },
+function getBatchState(payload: unknown): string | undefined {
+  const val = extractFirstString(payload, [['state'], ['metadata', 'state']]);
+  return val ? (toUpperStringCode(val) ?? undefined) : undefined;
+}
 
-  getResponseText(payload: unknown): string | undefined {
-    return extractFirstString(payload, [
-      ['inlineResponse', 'text'],
-      ['response', 'text'],
-      ['response', 'inlineResponses', '0', 'text'],
-    ]);
-  },
+function getBatchResponseText(payload: unknown): string | undefined {
+  return extractFirstString(payload, [
+    ['inlineResponse', 'text'],
+    ['response', 'text'],
+    ['response', 'inlineResponses', '0', 'text'],
+  ]);
+}
 
-  getErrorDetail(payload: unknown): string | undefined {
-    return extractFirstString(payload, [
-      ['error', 'message'],
-      ['metadata', 'error', 'message'],
-      ['response', 'error', 'message'],
-    ]);
-  },
+function getBatchErrorDetail(payload: unknown): string | undefined {
+  return extractFirstString(payload, [
+    ['error', 'message'],
+    ['metadata', 'error', 'message'],
+    ['response', 'error', 'message'],
+  ]);
+}
 
-  getSuccessResponseText(polled: unknown): string {
-    const text = this.getResponseText(polled);
-    if (text) return text;
+function getSuccessfulBatchResponseText(polled: unknown): string {
+  const text = getBatchResponseText(polled);
+  if (text) {
+    return text;
+  }
 
-    const err = this.getErrorDetail(polled);
-    throw new Error(
-      err
-        ? `Gemini batch request succeeded but returned no response text: ${err}`
-        : 'Gemini batch request succeeded but returned no response text.'
-    );
-  },
+  const err = getBatchErrorDetail(polled);
+  throw new Error(
+    err
+      ? `Gemini batch request succeeded but returned no response text: ${err}`
+      : 'Gemini batch request succeeded but returned no response text.'
+  );
+}
 
-  handleTerminalState(state: string | undefined, payload: unknown): void {
-    if (state === 'JOB_STATE_FAILED' || state === 'JOB_STATE_CANCELLED') {
-      const err = this.getErrorDetail(payload);
-      throw new Error(
-        err
-          ? `Gemini batch request ended with state ${state}: ${err}`
-          : `Gemini batch request ended with state ${state}.`
-      );
-    }
-  },
-};
+function throwOnTerminalBatchFailure(
+  state: string | undefined,
+  payload: unknown
+): void {
+  if (state !== 'JOB_STATE_FAILED' && state !== 'JOB_STATE_CANCELLED') {
+    return;
+  }
+
+  const err = getBatchErrorDetail(payload);
+  throw new Error(
+    err
+      ? `Gemini batch request ended with state ${state}: ${err}`
+      : `Gemini batch request ended with state ${state}.`
+  );
+}
 
 async function pollBatchStatusWithRetries(
   batches: NonNullable<BatchApiClient['batches']>,
@@ -691,6 +719,18 @@ async function cancelBatchIfNeeded(
   }
 }
 
+function getBatchName(createdJob: unknown): string {
+  const createdRecord = toRecord(createdJob);
+  const batchName =
+    typeof createdRecord?.name === 'string' ? createdRecord.name : undefined;
+
+  if (!batchName) {
+    throw new Error('Batch mode failed to return a job name.');
+  }
+
+  return batchName;
+}
+
 async function createBatchJob(
   request: GeminiStructuredRequest,
   batches: NonNullable<BatchApiClient['batches']>,
@@ -713,14 +753,14 @@ function processPollResult(
   polled: unknown
 ): { isDone: boolean; result?: unknown } {
   if (state === 'JOB_STATE_SUCCEEDED') {
-    const responseText = BatchHelper.getSuccessResponseText(polled);
+    const responseText = getSuccessfulBatchResponseText(polled);
     return {
       isDone: true,
       result: parseStructuredResponse(responseText),
     };
   }
 
-  BatchHelper.handleTerminalState(state, polled);
+  throwOnTerminalBatchFailure(state, polled);
   return { isDone: false };
 }
 
@@ -751,33 +791,18 @@ async function pollBatchForCompletion(
       requestSignal
     );
 
-    const { isDone, result } = processPollResult(
-      BatchHelper.getState(polled),
-      polled
-    );
+    const { isDone, result } = processPollResult(getBatchState(polled), polled);
 
     if (isDone) {
       return result;
     }
 
-    try {
-      await sleep(pollIntervalMs, undefined, {
-        ref: false,
-        signal: requestSignal,
-      });
-    } catch (sleepError: unknown) {
-      throwIfRequestCancelled(requestSignal);
-      throw sleepError;
-    }
+    await sleepWithCancellation(pollIntervalMs, requestSignal);
   }
 }
 
-async function runInlineBatchWithPolling(
-  request: GeminiStructuredRequest,
-  model: string,
-  onLog: GeminiOnLog
-): Promise<unknown> {
-  // SDK batch API is not yet typed in @google/genai; cast verified by !batches guard below.
+function getBatchApiClient(): NonNullable<BatchApiClient['batches']> {
+  // SDK batch API is not yet typed in @google/genai; cast verified below.
   const client = getClient() as unknown as BatchApiClient;
   const { batches } = client;
   if (!batches) {
@@ -794,17 +819,22 @@ async function runInlineBatchWithPolling(
     );
   }
 
+  return batches;
+}
+
+async function runInlineBatchWithPolling(
+  request: GeminiStructuredRequest,
+  model: string,
+  onLog: GeminiOnLog
+): Promise<unknown> {
+  const batches = getBatchApiClient();
+
   let batchName: string | undefined;
   let completed = false;
   let timedOut = false;
 
   try {
-    const createdJob = await createBatchJob(request, batches, model);
-    const createdRecord = toRecord(createdJob);
-    batchName =
-      typeof createdRecord?.name === 'string' ? createdRecord.name : undefined;
-
-    if (!batchName) throw new Error('Batch mode failed to return a job name.');
+    batchName = getBatchName(await createBatchJob(request, batches, model));
 
     await emitGeminiLog(onLog, 'info', {
       event: 'gemini_batch_created',

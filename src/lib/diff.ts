@@ -103,12 +103,23 @@ function processSection(
   end: number,
   sections: string[]
 ): void {
-  if (end > start) {
-    const section = raw.slice(start, end);
-    if (shouldKeepSection(section)) {
-      sections.push(section);
-    }
+  const section = getSectionSlice(raw, start, end);
+  if (section) {
+    sections.push(section);
   }
+}
+
+function getSectionSlice(
+  raw: string,
+  start: number,
+  end: number
+): string | undefined {
+  if (end <= start) {
+    return undefined;
+  }
+
+  const section = raw.slice(start, end);
+  return shouldKeepSection(section) ? section : undefined;
 }
 
 function extractAllSections(
@@ -130,13 +141,15 @@ function extractAllSections(
   processSection(raw, sectionStart, raw.length, sections);
 }
 
+function getFirstSectionBoundary(raw: string): number {
+  return raw.startsWith('diff --git ') ? 0 : raw.indexOf(DIFF_SECTION_BOUNDARY);
+}
+
 export function cleanDiff(raw: string): string {
   if (!raw) return '';
 
   const sections: string[] = [];
-  const nextIndex = raw.startsWith('diff --git ')
-    ? 0
-    : raw.indexOf(DIFF_SECTION_BOUNDARY);
+  const nextIndex = getFirstSectionBoundary(raw);
 
   if (nextIndex === -1) {
     processSection(raw, 0, raw.length, sections);
@@ -212,6 +225,13 @@ interface AggregatedDiffData {
   summaries: string[];
 }
 
+interface MutableAggregatedDiffState {
+  totalAdded: number;
+  totalDeleted: number;
+  paths: Set<string> | undefined;
+  summaries: string[];
+}
+
 function getFileStats(file: ParsedFile): { added: number; deleted: number } {
   let added = 0;
   let deleted = 0;
@@ -225,37 +245,58 @@ function getFileStats(file: ParsedFile): { added: number; deleted: number } {
   return { added, deleted };
 }
 
+function createAggregationState(
+  includePaths: boolean
+): MutableAggregatedDiffState {
+  return {
+    totalAdded: 0,
+    totalDeleted: 0,
+    paths: includePaths ? new Set<string>() : undefined,
+    summaries: [],
+  };
+}
+
+function appendAggregatedFileData(
+  state: MutableAggregatedDiffState,
+  file: ParsedFile,
+  index: number,
+  summaryLimit: number
+): void {
+  const fileStats = getFileStats(file);
+  state.totalAdded += fileStats.added;
+  state.totalDeleted += fileStats.deleted;
+
+  const path = resolveChangedPath(file);
+  if (path) {
+    state.paths?.add(path);
+  }
+
+  if (index < summaryLimit) {
+    state.summaries.push(
+      `${path ?? UNKNOWN_PATH} (+${fileStats.added} -${fileStats.deleted})`
+    );
+  }
+}
+
 function aggregateFiles(
   files: readonly ParsedFile[],
   options: AggregateFilesOptions = {}
 ): Readonly<AggregatedDiffData> {
   const { includePaths = false, summaryLimit = 0 } = options;
-  let totalAdded = 0;
-  let totalDeleted = 0;
-  const paths = includePaths ? new Set<string>() : undefined;
-  const summaries: string[] = [];
+  const state = createAggregationState(includePaths);
 
   files.forEach((file, index) => {
-    const fileStats = getFileStats(file);
-    totalAdded += fileStats.added;
-    totalDeleted += fileStats.deleted;
-
-    const path = resolveChangedPath(file);
-    if (path) {
-      paths?.add(path);
-    }
-
-    if (index < summaryLimit) {
-      summaries.push(
-        `${path ?? UNKNOWN_PATH} (+${fileStats.added} -${fileStats.deleted})`
-      );
-    }
+    appendAggregatedFileData(state, file, index, summaryLimit);
   });
 
   return {
-    stats: { files: files.length, added: totalAdded, deleted: totalDeleted },
-    paths: paths ? sortPaths(paths) : EMPTY_PATHS,
-    summaries,
+    stats: {
+      files: files.length,
+      added: state.totalAdded,
+      deleted: state.totalDeleted,
+    },
+    paths: state.paths ? sortPaths(state.paths) : EMPTY_PATHS,
+    summaries: state.summaries,
   };
 }
 
@@ -292,7 +333,7 @@ export function computeDiffStatsAndPathsFromFiles(
 
 function extractChangedPathsFromFiles(files: readonly ParsedFile[]): string[] {
   if (isNoFiles(files)) return EMPTY_PATHS;
-  return aggregateFiles(files, { includePaths: true }).paths;
+  return computeDiffStatsAndPathsFromFiles(files).paths;
 }
 
 export function extractChangedPaths(diff: string): string[] {

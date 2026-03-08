@@ -945,24 +945,15 @@ function createTaskStatusReporter(
   store: RequestTaskStore
 ): TaskStatusReporter {
   return {
-    updateStatus: async (message) => {
-      if (hasTaskStatusUpdate(store)) {
-        await store.updateTaskStatus(taskId, 'working', message);
-      }
-    },
+    updateStatus: (message) =>
+      updateTaskStatusIfSupported(store, taskId, 'working', message),
     storeResult: async (status, result) => {
       await extra.taskStore.storeTaskResult(taskId, status, result);
     },
-    storeCancelledResult: async (result) => {
-      if (hasCancelledTaskResultStore(store)) {
-        await store.storeCancelledTaskResult(taskId, result);
-      }
-    },
-    reportCancellation: async (message) => {
-      if (hasTaskStatusUpdate(store)) {
-        await store.updateTaskStatus(taskId, 'cancelled', message);
-      }
-    },
+    storeCancelledResult: (result) =>
+      storeCancelledResultIfSupported(store, taskId, result),
+    reportCancellation: (message) =>
+      updateTaskStatusIfSupported(store, taskId, 'cancelled', message),
   };
 }
 
@@ -1022,24 +1013,42 @@ function createImmediateTaskResponse(
   };
 }
 
+async function updateTaskStatusIfSupported(
+  store: RequestTaskStore,
+  taskId: string,
+  status: 'working' | 'failed' | 'cancelled',
+  message: string
+): Promise<void> {
+  if (hasTaskStatusUpdate(store)) {
+    await store.updateTaskStatus(taskId, status, message);
+  }
+}
+
+async function storeCancelledResultIfSupported(
+  store: RequestTaskStore,
+  taskId: string,
+  result: CallToolResult
+): Promise<void> {
+  if (hasCancelledTaskResultStore(store)) {
+    await store.storeCancelledTaskResult(taskId, result);
+  }
+}
+
 async function storeCancelledTaskState(
   store: RequestTaskStore,
   taskId: string,
   errorCode: string,
   message: string
 ): Promise<void> {
-  if (hasCancelledTaskResultStore(store)) {
-    await store
-      .storeCancelledTaskResult(
-        taskId,
-        createCancelledTaskResult(errorCode, message)
-      )
-      .catch(() => {});
-  }
+  await storeCancelledResultIfSupported(
+    store,
+    taskId,
+    createCancelledTaskResult(errorCode, message)
+  ).catch(() => {});
 
-  if (hasTaskStatusUpdate(store)) {
-    await store.updateTaskStatus(taskId, 'cancelled', message).catch(() => {});
-  }
+  await updateTaskStatusIfSupported(store, taskId, 'cancelled', message).catch(
+    () => {}
+  );
 }
 
 async function storeBackgroundTaskFailure(
@@ -1063,9 +1072,7 @@ async function storeBackgroundTaskFailure(
       return;
     }
 
-    if (hasTaskStatusUpdate(store)) {
-      await store.updateTaskStatus(taskId, 'failed', errorMessage);
-    }
+    await updateTaskStatusIfSupported(store, taskId, 'failed', errorMessage);
   } catch {
     // Status update failed — nothing more we can do
   }
@@ -1126,6 +1133,39 @@ async function getTaskResultOrCancellation(
   return (await taskStore.getTaskResult(taskId)) as CallToolResult;
 }
 
+function createTaskQueryHandlers(errorCode: string): {
+  getTask: (
+    input: unknown,
+    extra: TaskRequestHandlerExtra
+  ) => Promise<Awaited<ReturnType<RequestTaskStore['getTask']>>>;
+  getTaskResult: (
+    input: unknown,
+    extra: TaskRequestHandlerExtra
+  ) => Promise<CallToolResult>;
+} {
+  return {
+    getTask: (_input, extra) => extra.taskStore.getTask(extra.taskId),
+    getTaskResult: (_input, extra) =>
+      getTaskResultOrCancellation(extra.taskStore, extra.taskId, errorCode),
+  };
+}
+
+function createStructuredTaskRunnerDependencies(
+  server: McpServer,
+  taskId: string,
+  extra: CreateTaskRequestHandlerExtra
+): {
+  onLog: (level: string, data: unknown) => Promise<void>;
+  reportProgress: (payload: ProgressPayload) => Promise<void>;
+  statusReporter: TaskStatusReporter;
+} {
+  return {
+    onLog: createGeminiLogger(server),
+    reportProgress: getOrCreateProgressReporter(toProgressExtra(extra)),
+    statusReporter: createTaskStatusReporter(taskId, extra, extra.taskStore),
+  };
+}
+
 export function registerStructuredToolTask<
   TInput extends object,
   TResult extends object = Record<string, unknown>,
@@ -1143,6 +1183,7 @@ export function registerStructuredToolTask<
   responseSchemaCache.set(config, responseSchema);
 
   const outputSchema = createToolOutputSchema(config.resultSchema);
+  const taskQueryHandlers = createTaskQueryHandlers(config.errorCode);
 
   server.experimental.tasks.registerToolTask(
     config.name,
@@ -1166,15 +1207,7 @@ export function registerStructuredToolTask<
 
         const runner = new ToolExecutionRunner(
           config,
-          {
-            onLog: createGeminiLogger(server),
-            reportProgress: getOrCreateProgressReporter(toProgressExtra(extra)),
-            statusReporter: createTaskStatusReporter(
-              task.taskId,
-              extra,
-              extra.taskStore
-            ),
-          },
+          createStructuredTaskRunnerDependencies(server, task.taskId, extra),
           signal
         );
 
@@ -1187,16 +1220,7 @@ export function registerStructuredToolTask<
 
         return createImmediateTaskResponse(config.title, task);
       },
-      getTask: async (input: unknown, extra: TaskRequestHandlerExtra) => {
-        return await extra.taskStore.getTask(extra.taskId);
-      },
-      getTaskResult: async (input: unknown, extra: TaskRequestHandlerExtra) => {
-        return await getTaskResultOrCancellation(
-          extra.taskStore,
-          extra.taskId,
-          config.errorCode
-        );
-      },
+      ...taskQueryHandlers,
     }
   );
 }
@@ -1285,6 +1309,8 @@ export function registerTaskBackedTool<
   server: McpServer,
   config: TaskBackedToolConfig<TInput, TOutputSchema>
 ): void {
+  const taskQueryHandlers = createTaskQueryHandlers(config.errorCode);
+
   server.experimental.tasks.registerToolTask(
     config.name,
     {
@@ -1314,19 +1340,7 @@ export function registerTaskBackedTool<
 
         return createImmediateTaskResponse(config.title, task);
       },
-      getTask: async (_input: unknown, extra: TaskRequestHandlerExtra) => {
-        return await extra.taskStore.getTask(extra.taskId);
-      },
-      getTaskResult: async (
-        _input: unknown,
-        extra: TaskRequestHandlerExtra
-      ) => {
-        return await getTaskResultOrCancellation(
-          extra.taskStore,
-          extra.taskId,
-          config.errorCode
-        );
-      },
+      ...taskQueryHandlers,
     }
   );
 }
