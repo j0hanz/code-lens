@@ -50,8 +50,7 @@ import type {
 // Constants
 // ---------------------------------------------------------------------------
 
-const SLEEP_UNREF_OPTIONS = { ref: false } as const;
-const JSON_CODE_BLOCK_PATTERN = /```(?:json)?\n?([\s\S]*?)(?=\n?```)/u;
+const JSON_CODE_BLOCK_PATTERN = /```(?:json)?\n?(.*?)(?=\n?```)/su;
 const MAX_BATCH_POLL_RETRIES = 2;
 
 type GenerateContentResponse = Awaited<
@@ -90,21 +89,10 @@ const batchCallLimiter = createConcurrencyLimiter(() =>
 // Signal / sleep helpers
 // ---------------------------------------------------------------------------
 
-function combineSignals(
-  signal: AbortSignal,
-  requestSignal?: AbortSignal
-): AbortSignal {
-  return requestSignal ? AbortSignal.any([signal, requestSignal]) : signal;
-}
-
 function throwIfRequestCancelled(requestSignal?: AbortSignal): void {
   if (requestSignal?.aborted) {
     throw new Error(CANCELLED_REQUEST_MESSAGE);
   }
-}
-
-function getSleepOptions(signal?: AbortSignal): Parameters<typeof sleep>[2] {
-  return signal ? { ...SLEEP_UNREF_OPTIONS, signal } : SLEEP_UNREF_OPTIONS;
 }
 
 // ---------------------------------------------------------------------------
@@ -233,14 +221,11 @@ async function generateContentWithTimeout(
   request: GeminiStructuredRequest,
   model: string,
   timeoutMs: number
-): Promise<Awaited<ReturnType<GoogleGenAI['models']['generateContent']>>> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => {
-    controller.abort();
-  }, timeoutMs);
-  timeout.unref();
-
-  const signal = combineSignals(controller.signal, request.signal);
+): Promise<GenerateContentResponse> {
+  const timeoutSignal = AbortSignal.timeout(timeoutMs);
+  const signal = request.signal
+    ? AbortSignal.any([timeoutSignal, request.signal])
+    : timeoutSignal;
 
   try {
     return await getClient().models.generateContent({
@@ -251,13 +236,11 @@ async function generateContentWithTimeout(
   } catch (error: unknown) {
     throwIfRequestCancelled(request.signal);
 
-    if (controller.signal.aborted) {
+    if (timeoutSignal.aborted) {
       throw new Error(formatTimeoutErrorMessage(timeoutMs), { cause: error });
     }
 
     throw error;
-  } finally {
-    clearTimeout(timeout);
   }
 }
 
@@ -477,7 +460,7 @@ async function waitBeforeRetry(
   throwIfRequestCancelled(requestSignal);
 
   try {
-    await sleep(delayMs, undefined, getSleepOptions(requestSignal));
+    await sleep(delayMs, undefined, { ref: false, signal: requestSignal });
   } catch (sleepError: unknown) {
     throwIfRequestCancelled(requestSignal);
 
@@ -777,7 +760,15 @@ async function pollBatchForCompletion(
       return result;
     }
 
-    await sleep(pollIntervalMs, undefined, getSleepOptions(requestSignal));
+    try {
+      await sleep(pollIntervalMs, undefined, {
+        ref: false,
+        signal: requestSignal,
+      });
+    } catch (sleepError: unknown) {
+      throwIfRequestCancelled(requestSignal);
+      throw sleepError;
+    }
   }
 }
 
