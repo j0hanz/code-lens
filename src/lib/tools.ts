@@ -147,7 +147,7 @@ function buildToolAnnotations(
     return {
       readOnlyHint: true,
       idempotentHint: true,
-      openWorldHint: true,
+      openWorldHint: false,
       destructiveHint: false,
     };
   }
@@ -157,7 +157,7 @@ function buildToolAnnotations(
   return {
     readOnlyHint: !destructiveHint,
     idempotentHint: !destructiveHint,
-    openWorldHint: true,
+    openWorldHint: false,
     destructiveHint: destructiveHint ?? false,
     ...annotationOverrides,
   };

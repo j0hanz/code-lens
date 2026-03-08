@@ -99,7 +99,7 @@ function classifyGitError(err: GitError): {
   kind: 'validation' | 'timeout' | 'internal';
 } {
   if (err.code === 'ENOENT') {
-    return { retryable: false, kind: 'validation' };
+    return { retryable: false, kind: 'internal' };
   }
   if (err.killed === true) {
     return { retryable: false, kind: 'timeout' };

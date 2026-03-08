@@ -123,9 +123,11 @@ export const VerifyLogicInputSchema = z.strictObject({
   language: LanguageSchema,
 });
 
+export const DIFF_MODES = ['unstaged', 'staged'] as const;
+
 export const GenerateDiffInputSchema = z.strictObject({
   mode: z
-    .enum(['unstaged', 'staged'])
+    .enum(DIFF_MODES)
     .describe(
       '"unstaged": working-tree changes not yet staged. "staged": changes added to the index with git add.'
     ),

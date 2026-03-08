@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { createBoundedString, createBoundedStringArray } from './helpers.js';
+import { DIFF_MODES } from './inputs.js';
 
 const OUTPUT_LIMITS = {
   reviewDiffResult: {
@@ -560,7 +561,7 @@ export const GenerateDiffResultSchema = z.strictObject({
     })
     .describe('Diff statistics.'),
   generatedAt: z.string().describe('ISO 8601 timestamp.'),
-  mode: z.enum(['unstaged', 'staged']).describe('Diff mode used.'),
+  mode: z.enum(DIFF_MODES).describe('Diff mode used.'),
   message: z.string().describe('Human-readable summary.'),
 });
 
