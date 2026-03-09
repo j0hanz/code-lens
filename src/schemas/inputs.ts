@@ -118,8 +118,9 @@ export const DIFF_MODES = ['unstaged', 'staged'] as const;
 export const GenerateDiffInputSchema = z.strictObject({
   mode: z
     .enum(DIFF_MODES)
+    .default('unstaged')
     .describe(
-      '"unstaged": working-tree changes not yet staged. "staged": changes added to the index with git add.'
+      '"unstaged": working-tree changes not yet staged. "staged": changes added to the index with git add. Default: unstaged.'
     ),
 });
 

@@ -157,7 +157,7 @@ export function cleanDiff(raw: string): string {
     extractAllSections(raw, sections, nextIndex);
   }
 
-  return sections.join('').trim();
+  return sections.join('').replace(/^\n+/, '').replace(/\n+$/, '');
 }
 
 export function isEmptyDiff(diff: string): boolean {
